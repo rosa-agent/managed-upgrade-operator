@@ -440,7 +440,7 @@ func (s *PreflightHTTPServer) findCR(ctx context.Context, requestID string) (*up
 
 // crNamePrefix returns a sanitized GenerateName value from the caller-supplied prefix.
 // Only lowercase alphanumeric characters and interior hyphens are kept; leading/trailing
-// hyphens are stripped. Falls back to "upgradecheck" if the result is empty.
+// hyphens are stripped. Falls back to "upgradediags" if the result is empty.
 func crNamePrefix(raw string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(raw) {
@@ -450,7 +450,7 @@ func crNamePrefix(raw string) string {
 	}
 	prefix := strings.Trim(b.String(), "-")
 	if prefix == "" {
-		prefix = "upgradecheck"
+		prefix = "upgradediags"
 	}
 	return prefix + "-"
 }
