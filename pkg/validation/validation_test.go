@@ -336,3 +336,121 @@ var _ = Describe("Validation of UpgradeConfig CR", func() {
 		})
 	})
 })
+
+var _ = Describe("ValidateUpgradeTarget", func() {
+	var (
+		testLogger logr.Logger
+		baseCv     *configv1.ClusterVersion
+	)
+
+	// completedHistory builds a ClusterVersion whose GetCurrentVersion returns currentVersion.
+	newCV := func(currentVersion, channel string) *configv1.ClusterVersion {
+		t := v1.NewTime(time.Now())
+		return &configv1.ClusterVersion{
+			Spec: configv1.ClusterVersionSpec{
+				Channel: channel,
+			},
+			Status: configv1.ClusterVersionStatus{
+				History: []configv1.UpdateHistory{
+					{
+						State:          "Completed",
+						Version:        currentVersion,
+						CompletionTime: &t,
+					},
+				},
+			},
+		}
+	}
+
+	BeforeEach(func() {
+		testLogger = logf.Log.WithName("ValidateUpgradeTarget test")
+		baseCv = newCV("4.14.10", "stable-4.14")
+	})
+
+	Context("when the desired version is not valid semver", func() {
+		It("returns IsValid=false with an error", func() {
+			result, err := ValidateUpgradeTarget("not-semver", "stable-4.14", baseCv, testLogger)
+			Expect(err).To(HaveOccurred())
+			Expect(result.IsValid).To(BeFalse())
+		})
+	})
+
+	Context("when the desired version is a downgrade", func() {
+		It("returns IsValid=true, IsAvailableUpdate=false with an error", func() {
+			result, err := ValidateUpgradeTarget("4.14.9", "stable-4.14", baseCv, testLogger)
+			Expect(err).To(HaveOccurred())
+			Expect(result.IsValid).To(BeTrue())
+			Expect(result.IsAvailableUpdate).To(BeFalse())
+		})
+	})
+
+	Context("when the desired version equals the current version", func() {
+		It("returns IsValid=true, IsAvailableUpdate=false with an error", func() {
+			result, err := ValidateUpgradeTarget("4.14.10", "stable-4.14", baseCv, testLogger)
+			Expect(err).To(HaveOccurred())
+			Expect(result.IsValid).To(BeTrue())
+			Expect(result.IsAvailableUpdate).To(BeFalse())
+		})
+	})
+
+	Context("z-stream — same channel", func() {
+		It("returns valid+available when version is in AvailableUpdates", func() {
+			baseCv.Status.AvailableUpdates = []configv1.Release{{Version: "4.14.11"}}
+			result, err := ValidateUpgradeTarget("4.14.11", "stable-4.14", baseCv, testLogger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsValid).To(BeTrue())
+			Expect(result.IsAvailableUpdate).To(BeTrue())
+		})
+
+		It("returns valid+available when version is in ConditionalUpdates with Recommended=True", func() {
+			baseCv.Status.ConditionalUpdates = []configv1.ConditionalUpdate{
+				{
+					Release: configv1.Release{Version: "4.14.11"},
+					Conditions: []v1.Condition{
+						{Type: "Recommended", Status: v1.ConditionTrue},
+					},
+				},
+			}
+			result, err := ValidateUpgradeTarget("4.14.11", "stable-4.14", baseCv, testLogger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsValid).To(BeTrue())
+			Expect(result.IsAvailableUpdate).To(BeTrue())
+		})
+
+		It("returns valid+NOT available when Recommended=False (risk applies to cluster)", func() {
+			baseCv.Status.ConditionalUpdates = []configv1.ConditionalUpdate{
+				{
+					Release: configv1.Release{Version: "4.14.11"},
+					Conditions: []v1.Condition{
+						{Type: "Recommended", Status: v1.ConditionFalse, Message: "risk applies to this cluster"},
+					},
+				},
+			}
+			result, err := ValidateUpgradeTarget("4.14.11", "stable-4.14", baseCv, testLogger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsValid).To(BeTrue())
+			Expect(result.IsAvailableUpdate).To(BeFalse())
+			Expect(result.Message).To(ContainSubstring("not recommended"))
+		})
+
+		It("returns valid+available when ConditionalUpdate has no Recommended condition yet", func() {
+			baseCv.Status.ConditionalUpdates = []configv1.ConditionalUpdate{
+				{
+					Release:    configv1.Release{Version: "4.14.11"},
+					Conditions: []v1.Condition{},
+				},
+			}
+			result, err := ValidateUpgradeTarget("4.14.11", "stable-4.14", baseCv, testLogger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsValid).To(BeTrue())
+			Expect(result.IsAvailableUpdate).To(BeTrue())
+		})
+
+		It("returns NOT available when version not found in either list", func() {
+			result, err := ValidateUpgradeTarget("4.14.99", "stable-4.14", baseCv, testLogger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.IsValid).To(BeFalse())
+			Expect(result.IsAvailableUpdate).To(BeFalse())
+		})
+	})
+})

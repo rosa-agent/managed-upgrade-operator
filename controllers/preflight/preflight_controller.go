@@ -196,6 +196,7 @@ func (r *ReconcileUpgradePreflightCheck) runChecks(
 		Machinery:            r.Machinery,
 		DvoClientBuilder:     r.DvoClientBuilder,
 		DesiredVersion:       instance.Spec.Desired.Version,
+		DesiredChannel:       instance.Spec.Desired.Channel,
 	}
 	enabled := instance.Spec.Checks
 

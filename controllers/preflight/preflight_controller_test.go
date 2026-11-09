@@ -242,7 +242,7 @@ var _ = Describe("PreflightController", func() {
 
 				// check calls (all checks enabled)
 				mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv).AnyTimes()
-				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{}, nil).Times(3) // ClusterVersion + UpgradeInFlight + UpgradeableCondition
+				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{}, nil).Times(5) // ClusterVersion + UpgradeTarget + UpgradeTargetExtended + UpgradeInFlight + UpgradeableCondition
 				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&configv1.ClusterOperatorList{}), gomock.Any()).Return(nil) // extended CO operator list
 				mockCv.EXPECT().HasDegradedOperators().Return(&clusterversion.HasDegradedOperatorsResult{}, nil).Times(2) // baseline CO + extended CO
 				// 6 NewClient calls: baseline CO, baseline CA, extended CA, baseline MCN, baseline NT, baseline PDB

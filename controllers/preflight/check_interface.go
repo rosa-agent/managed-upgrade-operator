@@ -23,6 +23,8 @@ type CheckDependencies struct {
 	DvoClientBuilder     dvo.DvoClientBuilder
 	// DesiredVersion is the target upgrade version from the CR spec.
 	DesiredVersion string
+	// DesiredChannel is the target upgrade channel from the CR spec.
+	DesiredChannel string
 }
 
 // CheckOutput is returned by PreflightCheck.Run.

@@ -26,6 +26,7 @@ import (
 	imagereference "github.com/openshift/library-go/pkg/image/reference"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
 	cv "github.com/openshift/managed-upgrade-operator/pkg/clusterversion"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -197,6 +198,77 @@ func (v *validator) IsValidUpgradeConfig(c client.Client, uC *upgradev1alpha1.Up
 	}
 
 	return validationPassed, nil
+}
+
+// ValidateUpgradeTarget validates whether the requested version and channel represent a valid
+// upgrade from the cluster's current state. It applies the same semver comparison and
+// Cincinnati graph checks as IsValidUpgradeConfig, but accepts discrete parameters rather
+// than a full UpgradeConfig CR — suitable for callers such as the preflight HTTP API.
+//
+// For y-stream upgrades (channel differs from the cluster's current channel) it queries
+// Cincinnati to confirm the edge exists. For z-stream upgrades (same channel) it checks
+// the CVO's AvailableUpdates and ConditionalUpdates lists. For conditional updates it also
+// evaluates the Recommended condition — if the CVO has determined a risk applies to this
+// cluster, the update is reported as not available even though the version is reachable.
+func ValidateUpgradeTarget(version, channel string, cV *configv1.ClusterVersion, logger logr.Logger) (ValidatorResult, error) {
+	versionValid, versionAvailable, err := versionValidation(version, cV, logger)
+	if err != nil {
+		return ValidatorResult{
+			IsValid:           versionValid,
+			IsAvailableUpdate: versionAvailable,
+			Message:           err.Error(),
+		}, err
+	}
+
+	uc := &upgradev1alpha1.UpgradeConfig{
+		Spec: upgradev1alpha1.UpgradeConfigSpec{
+			Desired: upgradev1alpha1.Update{
+				Version: version,
+				Channel: channel,
+			},
+		},
+	}
+
+	if channel != cV.Spec.Channel {
+		cvoUpdates, err := fetchCVOUpdates(cV, uc)
+		if err != nil {
+			return ValidatorResult{IsValid: false, IsAvailableUpdate: false, Message: err.Error()}, err
+		}
+		if err := channelValidation(uc, cvoUpdates, logger); err != nil {
+			return ValidatorResult{IsValid: false, IsAvailableUpdate: false, Message: err.Error()}, err
+		}
+		return ValidatorResult{IsValid: true, IsAvailableUpdate: true, Message: "upgrade target is valid"}, nil
+	}
+
+	for _, update := range cV.Status.AvailableUpdates {
+		if update.Version == version {
+			return ValidatorResult{IsValid: true, IsAvailableUpdate: true, Message: "upgrade target is valid"}, nil
+		}
+	}
+	for _, update := range cV.Status.ConditionalUpdates {
+		if update.Release.Version == version {
+			for _, cond := range update.Conditions {
+				if cond.Type == "Recommended" {
+					if cond.Status != metav1.ConditionTrue {
+						return ValidatorResult{
+							IsValid:           true,
+							IsAvailableUpdate: false,
+							Message:           fmt.Sprintf("version %s is a conditional update not recommended for this cluster: %s", version, cond.Message),
+						}, nil
+					}
+					return ValidatorResult{IsValid: true, IsAvailableUpdate: true, Message: "upgrade target is valid"}, nil
+				}
+			}
+			// Recommended condition not yet evaluated by CVO — treat as conditionally available
+			return ValidatorResult{IsValid: true, IsAvailableUpdate: true, Message: "upgrade target is valid (conditional update, risks not yet evaluated by CVO)"}, nil
+		}
+	}
+
+	return ValidatorResult{
+		IsValid:           false,
+		IsAvailableUpdate: false,
+		Message:           fmt.Sprintf("version %s not found in clusterversion available or conditional updates", version),
+	}, nil
 }
 
 // compareVersions accepts desiredVersion and currentVersion strings as versions, converts
@@ -443,6 +515,42 @@ func channelValidation(uC *upgradev1alpha1.UpgradeConfig, cvoUpdates []configv1.
 	}
 
 	return nil
+}
+
+// CincinnatiResult holds the full result of a live Cincinnati graph query,
+// preserving conditional update risks and conditions for caller evaluation.
+type CincinnatiResult struct {
+	// Available are unconditional update edges from the current version on the queried channel.
+	Available []configv1.Release
+	// Conditional are update edges that carry attached risks; each entry includes
+	// a Conditions slice with a Recommended condition evaluated per-cluster by the CVO.
+	Conditional []configv1.ConditionalUpdate
+}
+
+// FetchCincinnatiUpdates queries the Cincinnati graph for available updates from the
+// cluster's current version on the given channel. Unlike the internal fetchCVOUpdates,
+// it preserves the full ConditionalUpdate type (including per-cluster risk conditions)
+// so callers can evaluate whether a conditional update is recommended for this cluster.
+func FetchCincinnatiUpdates(ctx context.Context, cV *configv1.ClusterVersion, channel string) (*CincinnatiResult, error) {
+	clusterId, err := uuid.Parse(string(cV.Spec.ClusterID))
+	if err != nil {
+		return nil, err
+	}
+	upstreamURI, err := url.Parse(getUpstreamURL(cV))
+	if err != nil {
+		return nil, err
+	}
+
+	cvVersion, _ := cv.GetCurrentVersion(cV)
+	parsedCvVersion, _ := semver.Parse(cvVersion)
+
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
+	_, available, conditional, err := cincinnati.NewClient(clusterId, transport, config.SetUserAgent(), clusterconditions.NewConditionRegistry()).
+		GetUpdates(ctx, upstreamURI, runtime.GOARCH, runtime.GOARCH, channel, parsedCvVersion)
+	if err != nil {
+		return nil, err
+	}
+	return &CincinnatiResult{Available: available, Conditional: conditional}, nil
 }
 
 // Fetch the available upgrade from upstream with the given version

@@ -47,7 +47,7 @@ type CheckRequest struct {
 	Description         string   `json:"description,omitempty"`
 	// NamePrefix sets a custom prefix for the generated UpgradePreflightCheck CR name.
 	// Must be a valid DNS label segment (lowercase alphanumeric and hyphens, no leading/trailing hyphens).
-	// Defaults to "upgradecheck" if empty or invalid.
+	// Defaults to "upgradediags" if empty or invalid.
 	NamePrefix string `json:"namePrefix,omitempty"`
 }
 
@@ -63,6 +63,7 @@ type CheckResponse struct {
 	ChecksTotal     int           `json:"checksTotal"`
 	ChecksCompleted int           `json:"checksCompleted"`
 	ChecksPassed    int           `json:"checksPassed"`
+	ChecksWarned    int           `json:"checksWarned"`
 	ChecksFailed    int           `json:"checksFailed"`
 	ChecksSkipped   int           `json:"checksSkipped"`
 	ChecksErrored   int           `json:"checksErrored"`
@@ -505,6 +506,7 @@ func buildResponse(requestID string, cr *upgradev1alpha1.UpgradePreflightCheck) 
 	}
 
 	anyBad := false
+	anyWarning := false
 	for _, c := range cr.Status.Checks {
 		r := CheckResult{Name: c.Name, Owner: string(c.Owner), Action: c.Action}
 		switch c.Execution.State {
@@ -513,10 +515,14 @@ func buildResponse(requestID string, cr *upgradev1alpha1.UpgradePreflightCheck) 
 			r.Status = strings.ToLower(string(c.Result))
 			r.Message = c.Execution.Summary
 			r.Details = c.Execution.Findings
-			if c.Result == upgradev1alpha1.CheckFailed {
+			switch c.Result {
+			case upgradev1alpha1.CheckFailed:
 				resp.ChecksFailed++
 				anyBad = true
-			} else {
+			case upgradev1alpha1.CheckResultWarning:
+				resp.ChecksWarned++
+				anyWarning = true
+			default:
 				resp.ChecksPassed++
 			}
 		case upgradev1alpha1.CheckError:
@@ -532,11 +538,16 @@ func buildResponse(requestID string, cr *upgradev1alpha1.UpgradePreflightCheck) 
 	}
 
 	if cr.Status.CompletedAt != nil {
-		if anyBad {
+		switch {
+		case anyBad:
 			resp.OverallStatus = "failed"
 			resp.Message = fmt.Sprintf("Upgrade not recommended — %d check(s) failed, %d errored",
 				resp.ChecksFailed, resp.ChecksErrored)
-		} else {
+		case anyWarning:
+			resp.OverallStatus = "warning"
+			resp.Message = fmt.Sprintf("Upgrade may proceed — %d check(s) returned warnings, review findings before upgrading",
+				resp.ChecksWarned)
+		default:
 			resp.OverallStatus = "passed"
 			resp.Message = "Cluster is ready for upgrade"
 		}
@@ -553,6 +564,31 @@ func validateCheckRequest(req CheckRequest) error {
 	}
 	if req.Platform != "OSD" && req.Platform != "ARO" {
 		return fmt.Errorf("platform must be OSD or ARO, got %q", req.Platform)
+	}
+	if req.DefaultCheckTimeoutSeconds < 0 {
+		return fmt.Errorf("defaultCheckTimeoutSeconds must be >= 0, got %d", req.DefaultCheckTimeoutSeconds)
+	}
+	if req.OverallTimeoutSeconds < 0 {
+		return fmt.Errorf("overallTimeoutSeconds must be >= 0, got %d", req.OverallTimeoutSeconds)
+	}
+	if len(req.ChecksToRun) > 0 {
+		valid := make(map[string]struct{}, len(registeredChecks))
+		for _, c := range registeredChecks {
+			valid[c.Name()] = struct{}{}
+		}
+		var unknown []string
+		for _, name := range req.ChecksToRun {
+			if _, ok := valid[name]; !ok {
+				unknown = append(unknown, name)
+			}
+		}
+		if len(unknown) > 0 {
+			known := make([]string, 0, len(registeredChecks))
+			for _, c := range registeredChecks {
+				known = append(known, c.Name())
+			}
+			return fmt.Errorf("unknown check name(s) in checksToRun: %v — valid names: %v", unknown, known)
+		}
 	}
 	return nil
 }

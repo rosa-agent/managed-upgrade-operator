@@ -10,6 +10,8 @@ package preflight
 // and Owner injection automatically.
 var registeredChecks = []PreflightCheck{
 	&clusterVersionCheck{},
+	&upgradeTargetCheck{},
+	&upgradeTargetExtendedCheck{},
 	&upgradeInFlightCheck{},
 	&clusterOperatorsCheck{},
 	&clusterOperatorsExtendedCheck{},

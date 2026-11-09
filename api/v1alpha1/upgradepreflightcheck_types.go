@@ -57,12 +57,16 @@ const (
 )
 
 // CheckResult is the top-level health verdict for a preflight check.
-// +kubebuilder:validation:Enum={"Passed","Failed","Error","Skipped","TimedOut","Unknown"}
+// +kubebuilder:validation:Enum={"Passed","Warning","Failed","Error","Skipped","TimedOut","Unknown"}
 type CheckResult string
 
 const (
 	// CheckPassed means the cluster is healthy for this check dimension.
 	CheckPassed CheckResult = "Passed"
+	// CheckResultWarning means the check completed and the cluster can proceed, but the consumer
+	// should be aware of a non-blocking condition (e.g. stale CVO cache, conditional update risks
+	// that do not apply to this cluster, or a discrepancy between cached and live data).
+	CheckResultWarning CheckResult = "Warning"
 	// CheckFailed means the cluster has a health issue that may block an upgrade.
 	CheckFailed CheckResult = "Failed"
 	// CheckResultError means the check could not determine cluster health (infrastructure/transient failure).
