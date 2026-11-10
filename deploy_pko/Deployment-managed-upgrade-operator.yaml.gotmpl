@@ -74,6 +74,8 @@ spec:
               fieldPath: metadata.namespace
         - name: OPERATOR_NAME
           value: managed-upgrade-operator
+        - name: CONSOLEPLUGIN_DIR
+          value: /usr/share/consoleplugin
 {{- if hasKey . "environment" }}
 {{- if hasKey .environment "proxy" }}
 {{- if hasKey .environment.proxy "httpProxy" }}

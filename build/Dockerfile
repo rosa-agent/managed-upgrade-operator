@@ -12,7 +12,7 @@ FROM node:20-slim AS plugin-builder
 
 WORKDIR /consoleplugin
 COPY consoleplugin/package.json consoleplugin/package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 COPY consoleplugin/ ./
 RUN npm run build
 
