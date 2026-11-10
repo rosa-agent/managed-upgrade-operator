@@ -144,12 +144,49 @@ type PreflightCheckResult struct {
 	Execution CheckExecution `json:"execution"`
 }
 
+const (
+	// PreflightCompleteCondition is True when all checks have finished running.
+	// The Reason field carries the outcome: Passed, Warning, or Failed.
+	// Use with: oc wait --for=condition=Complete --timeout=5m pfc/<name>
+	PreflightCompleteCondition = "Complete"
+)
+
 // UpgradePreflightCheckStatus reports the outcome of all checks.
 type UpgradePreflightCheckStatus struct {
 	// +kubebuilder:validation:Optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// +kubebuilder:validation:Optional
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
+
+	// OverallResult is the top-level verdict once all checks are complete.
+	// Passed: all checks passed (warnings may be present).
+	// Warning: at least one check warned but none failed or errored.
+	// Failed: at least one check failed or errored.
+	// +kubebuilder:validation:Optional
+	OverallResult CheckResult `json:"overallResult,omitempty"`
+
+	// ChecksPassed is the number of checks that returned Passed.
+	// +kubebuilder:validation:Optional
+	ChecksPassed int `json:"checksPassed,omitempty"`
+	// ChecksWarned is the number of checks that returned Warning.
+	// +kubebuilder:validation:Optional
+	ChecksWarned int `json:"checksWarned,omitempty"`
+	// ChecksFailed is the number of checks that returned Failed.
+	// +kubebuilder:validation:Optional
+	ChecksFailed int `json:"checksFailed,omitempty"`
+	// ChecksErrored is the number of checks that returned Error or could not run.
+	// +kubebuilder:validation:Optional
+	ChecksErrored int `json:"checksErrored,omitempty"`
+
+	// Conditions exposes the run state as standard Kubernetes conditions.
+	// The Complete condition becomes True when all checks finish; Reason carries
+	// the outcome (Passed, Warning, or Failed) and Message gives a summary.
+	// This enables: oc wait --for=condition=Complete --timeout=5m pfc/<name>
+	// +kubebuilder:validation:Optional
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	Checks []PreflightCheckResult `json:"checks,omitempty"`
 }
@@ -160,7 +197,10 @@ type UpgradePreflightCheckStatus struct {
 // +kubebuilder:printcolumn:name="version",type="string",JSONPath=".spec.desired.version"
 // +kubebuilder:printcolumn:name="channel",type="string",JSONPath=".spec.desired.channel"
 // +kubebuilder:printcolumn:name="type",type="string",JSONPath=".spec.type"
-// +kubebuilder:printcolumn:name="started",type="string",JSONPath=".status.startedAt"
+// +kubebuilder:printcolumn:name="status",type="string",JSONPath=".status.overallResult",description="Overall check result"
+// +kubebuilder:printcolumn:name="passed",type="integer",JSONPath=".status.checksPassed"
+// +kubebuilder:printcolumn:name="warned",type="integer",JSONPath=".status.checksWarned"
+// +kubebuilder:printcolumn:name="failed",type="integer",JSONPath=".status.checksFailed"
 // +kubebuilder:printcolumn:name="completed",type="string",JSONPath=".status.completedAt"
 
 // UpgradePreflightCheck is the Schema for on-demand cluster upgrade readiness checks.

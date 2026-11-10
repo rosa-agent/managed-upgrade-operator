@@ -28,9 +28,19 @@ spec:
         - jsonPath: .spec.type
           name: type
           type: string
-        - jsonPath: .status.startedAt
-          name: started
+        - jsonPath: .status.overallResult
+          name: status
           type: string
+          description: Overall check result
+        - jsonPath: .status.checksPassed
+          name: passed
+          type: integer
+        - jsonPath: .status.checksWarned
+          name: warned
+          type: integer
+        - jsonPath: .status.checksFailed
+          name: failed
+          type: integer
         - jsonPath: .status.completedAt
           name: completed
           type: string
@@ -108,61 +118,173 @@ spec:
             status:
               description: UpgradePreflightCheckStatus reports the outcome of all checks.
               properties:
-                checks:
-                  description: Checks contains the results of all individual checks.
+                startedAt:
+                  description: StartedAt is when the first check began running.
+                  format: date-time
+                  type: string
+                completedAt:
+                  description: CompletedAt is when all checks finished.
+                  format: date-time
+                  type: string
+                overallResult:
+                  description: |-
+                    OverallResult is the top-level verdict once all checks complete.
+                    Passed: all checks passed (warnings may be present).
+                    Warning: at least one check warned but none failed or errored.
+                    Failed: at least one check failed or errored.
+                  enum:
+                    - Passed
+                    - Warning
+                    - Failed
+                  type: string
+                checksPassed:
+                  description: ChecksPassed is the number of checks that returned Passed.
+                  type: integer
+                checksWarned:
+                  description: ChecksWarned is the number of checks that returned Warning.
+                  type: integer
+                checksFailed:
+                  description: ChecksFailed is the number of checks that returned Failed.
+                  type: integer
+                checksErrored:
+                  description: ChecksErrored is the number of checks that returned Error or could not run.
+                  type: integer
+                conditions:
+                  description: |-
+                    Conditions exposes run state as standard Kubernetes conditions.
+                    The Complete condition becomes True when all checks finish; Reason carries
+                    the outcome (Passed, Warning, or Failed).
+                    Use: oc wait --for=condition=Complete --timeout=5m pfc/<name>
                   items:
-                    description: PreflightCheckResult holds the execution state and finding for a single preflight check.
+                    description: Condition contains details for one aspect of the current state of this API Resource.
                     properties:
+                      lastTransitionTime:
+                        description: LastTransitionTime is the last time the condition transitioned from one status to another.
+                        format: date-time
+                        type: string
+                      message:
+                        description: Message is a human readable message indicating details about the transition.
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        description: ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        description: Reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        description: Status of the condition, one of True, False, Unknown.
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: Type of condition in CamelCase.
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+                  x-kubernetes-list-map-keys:
+                    - type
+                  x-kubernetes-list-type: map
+                checks:
+                  description: Checks contains per-check results with findings and recommended actions.
+                  items:
+                    description: PreflightCheckResult holds the result and execution details for a single preflight check.
+                    properties:
+                      name:
+                        description: Name identifies the check (e.g. "CriticalAlerts", "ClusterOperators").
+                        type: string
+                      description:
+                        description: Description is a human-readable explanation of what this check validates.
+                        type: string
+                      result:
+                        description: |-
+                          Result is the top-level health verdict.
+                          Passed: cluster is healthy for this dimension.
+                          Warning: non-blocking condition the consumer should review.
+                          Failed: health issue that may block upgrade.
+                          Error: check could not determine health (infrastructure failure).
+                          Skipped: check was excluded by the Checks allowlist.
+                          TimedOut: check never started — overall run deadline exceeded.
+                        enum:
+                          - Passed
+                          - Warning
+                          - Failed
+                          - Error
+                          - Skipped
+                          - TimedOut
+                          - Unknown
+                        type: string
+                      owner:
+                        description: |-
+                          Owner identifies who must act when this check fails or errors.
+                          customer: the cluster owner must resolve this.
+                          service-team: Red Hat must investigate.
+                        enum:
+                          - customer
+                          - service-team
+                        type: string
+                      action:
+                        description: Action is the recommended next step when Result is Failed or Error.
+                        type: string
+                      timeoutSeconds:
+                        description: TimeoutSeconds is the timeout that was applied to this check.
+                        format: int32
+                        type: integer
                       execution:
-                        description: Execution describes whether the check ran successfully.
+                        description: Execution contains runtime information about how the check ran.
                         properties:
-                          error:
-                            description: Error contains the reason a check could not run (State=Error only).
-                            type: string
                           state:
-                            description: 'State is the execution outcome: Completed, Error, or Skipped.'
+                            description: 'State is whether the check machinery ran: Completed, Error, Skipped, or TimedOut.'
                             enum:
                               - Completed
                               - Error
                               - Skipped
+                              - TimedOut
+                            type: string
+                          startedAt:
+                            description: StartedAt is when this individual check began executing.
+                            format: date-time
+                            type: string
+                          completedAt:
+                            description: CompletedAt is when this individual check finished.
+                            format: date-time
+                            type: string
+                          summary:
+                            description: Summary is a concise human-readable explanation of what the check found.
+                            type: string
+                          findings:
+                            description: Findings contains detailed per-item observations (alert names, node names, risk details, etc).
+                            items:
+                              type: string
+                            type: array
+                          error:
+                            description: Error contains the reason a check could not run (State=Error only).
                             type: string
                         required:
                           - state
                         type: object
-                      name:
-                        description: Name identifies the check (e.g. "CriticalAlerts", "ClusterOperators").
-                        type: string
-                      result:
-                        description: Result contains the health finding. Only present when Execution.State=Completed.
-                        properties:
-                          details:
-                            description: Details contains per-item findings (e.g. individual alert names, node names).
-                            items:
-                              type: string
-                            type: array
-                          message:
-                            description: Message is a human-readable summary of the finding (present on Failed).
-                            type: string
-                          verdict:
-                            description: Verdict is Passed if the cluster is healthy for this check, Failed otherwise.
-                            enum:
-                              - Passed
-                              - Failed
-                            type: string
-                        required:
-                          - verdict
-                        type: object
                     required:
                       - execution
                       - name
+                      - result
+                      - timeoutSeconds
                     type: object
                   type: array
-                completedAt:
-                  format: date-time
-                  type: string
-                startedAt:
-                  format: date-time
-                  type: string
               type: object
           type: object
       served: true

@@ -176,12 +176,55 @@ func (r *ReconcileUpgradePreflightCheck) Reconcile(ctx context.Context, req reco
 	now := metav1.NewTime(time.Now())
 	instance.Status.CompletedAt = &now
 	instance.Status.Checks = checks
+	applyAggregates(&instance.Status, checks, now)
 	if err := r.Client.Status().Update(ctx, instance); err != nil {
 		return reconcile.Result{}, err
 	}
 
 	logger.Info("UpgradePreflightCheck completed", "totalChecks", len(checks))
 	return reconcile.Result{}, nil
+}
+
+// applyAggregates computes overall result counts and sets the Complete condition.
+func applyAggregates(status *upgradev1alpha1.UpgradePreflightCheckStatus, checks []upgradev1alpha1.PreflightCheckResult, now metav1.Time) {
+	var passed, warned, failed, errored int
+	for _, c := range checks {
+		switch c.Result {
+		case upgradev1alpha1.CheckPassed:
+			passed++
+		case upgradev1alpha1.CheckResultWarning:
+			warned++
+		case upgradev1alpha1.CheckFailed:
+			failed++
+		case upgradev1alpha1.CheckResultError:
+			errored++
+		}
+	}
+
+	var overall upgradev1alpha1.CheckResult
+	switch {
+	case failed > 0 || errored > 0:
+		overall = upgradev1alpha1.CheckFailed
+	case warned > 0:
+		overall = upgradev1alpha1.CheckResultWarning
+	default:
+		overall = upgradev1alpha1.CheckPassed
+	}
+
+	status.OverallResult = overall
+	status.ChecksPassed = passed
+	status.ChecksWarned = warned
+	status.ChecksFailed = failed
+	status.ChecksErrored = errored
+
+	msg := fmt.Sprintf("%d passed, %d warned, %d failed, %d errored", passed, warned, failed, errored)
+	status.Conditions = []metav1.Condition{{
+		Type:               upgradev1alpha1.PreflightCompleteCondition,
+		Status:             metav1.ConditionTrue,
+		Reason:             string(overall),
+		Message:            msg,
+		LastTransitionTime: now,
+	}}
 }
 
 func (r *ReconcileUpgradePreflightCheck) runChecks(
