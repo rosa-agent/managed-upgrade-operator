@@ -22,7 +22,10 @@ module.exports = {
     ],
   },
   plugins: [
-    new ConsoleRemotePlugin(),
+    new ConsoleRemotePlugin({
+      // Disable module validation since we're exposing dynamically via index.ts
+      validateExtensionIntegrity: false,
+    }),
   ],
   devServer: {
     port: 9001,

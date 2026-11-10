@@ -1,0 +1,19 @@
+[
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/preflight-checks",
+      "component": { "$codeRef": "PreflightCheckPage" }
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "preflight-checks",
+      "name": "Preflight Checks",
+      "href": "/preflight-checks",
+      "section": "administration"
+    }
+  }
+]
