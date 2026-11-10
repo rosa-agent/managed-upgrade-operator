@@ -116,6 +116,15 @@ func (s *PreflightHTTPServer) Start(ctx context.Context) error {
 	mux.HandleFunc("/api/v1/preflight-checks/", s.route)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
+	// Serve the console plugin static bundle.
+	// Files are embedded into the image at /usr/share/consoleplugin/ during docker build.
+	pluginDir := envOr("CONSOLEPLUGIN_DIR", "/usr/share/consoleplugin")
+	if _, err := os.Stat(pluginDir); err == nil {
+		mux.Handle("/plugin-manifest.json", http.FileServer(http.Dir(pluginDir)))
+		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir(pluginDir+"/assets"))))
+		s.Logger.Info("Console plugin assets enabled", "dir", pluginDir)
+	}
+
 	srv := &http.Server{
 		Addr:              preflightHTTPPort,
 		Handler:           mux,

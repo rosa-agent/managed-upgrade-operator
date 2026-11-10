@@ -1,0 +1,10 @@
+{
+  "name": "managed-upgrade-operator",
+  "version": "0.0.1",
+  "displayName": "Upgrade Preflight Checks",
+  "description": "Run and view upgrade readiness checks for OpenShift clusters",
+  "exposedModules": {
+    "PreflightCheckPage": "./components/PreflightCheckPage"
+  },
+  "customTranslations": {}
+}
