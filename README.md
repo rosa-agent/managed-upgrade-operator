@@ -39,6 +39,23 @@ If you like to contribute to the Managed Upgrade Operator, please read our [Cont
 * [Development](./docs/development.md) -- Instructions for developing and deploying the operator.
 * [Metrics](./docs/metrics.md) -- Prometheus metrics produced by the operator. 
 * [Testing](./docs/testing.md) -- Instructions for writing tests.
+* [Console Plugin](./docs/console-plugin.md) -- Enabling and using the upgrade preflight checks console plugin.
+
+## Upgrade Preflight Checks
+
+The operator includes an on-demand preflight check system that validates cluster upgrade readiness without scheduling or starting an upgrade. Checks can be triggered via:
+
+- **OpenShift Console** — Administration → Preflight Checks (requires [enabling the console plugin](./docs/console-plugin.md))
+- **HTTP API** — POST to the operator's HTTP service (port 8443) with a bearer token
+- **OCM** — The OCM Agent can create `UpgradePreflightCheck` CRs directly in the operator namespace
+
+Results are stored as `UpgradePreflightCheck` CRs and can be inspected with:
+
+```bash
+oc get pfc -n openshift-managed-upgrade-operator
+oc describe pfc <name> -n openshift-managed-upgrade-operator
+oc wait --for=condition=Complete --timeout=5m pfc/<name> -n openshift-managed-upgrade-operator
+```
 
 ## Workflow - UpgradeConfig
 
