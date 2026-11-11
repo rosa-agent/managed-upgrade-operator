@@ -112,9 +112,7 @@ export const PreflightCheckPage: React.FC = () => {
       <CreatePreflightForm
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(name) => {
-          setExpanded((prev) => ({ ...prev, [name]: true }));
-        }}
+        onCreated={() => setCreateOpen(false)}
       />
     </Page>
   );

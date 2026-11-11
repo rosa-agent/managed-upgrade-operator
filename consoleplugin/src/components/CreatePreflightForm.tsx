@@ -5,22 +5,9 @@ import {
   FormHelperText, HelperText, HelperTextItem,
   Alert, Spinner,
 } from '@patternfly/react-core';
-import { k8sCreate, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
-import type { UpgradePreflightCheck } from '../types';
+import { consoleFetch, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 
-const MUO_NS = 'openshift-managed-upgrade-operator';
-
-const PREFLIGHT_MODEL = {
-  apiVersion: 'upgrade.managed.openshift.io/v1alpha1',
-  kind: 'UpgradePreflightCheck',
-  plural: 'upgradepreflightchecks',
-  namespaced: true,
-  group: 'upgrade.managed.openshift.io',
-  version: 'v1alpha1',
-  abbr: 'PFC',
-  label: 'Preflight Check',
-  labelPlural: 'Preflight Checks',
-};
+const PREFLIGHT_API = '/api/plugins/managed-upgrade-operator/api/v1/preflight-checks';
 
 interface ClusterVersion {
   spec?: { channel?: string };
@@ -35,7 +22,7 @@ interface ClusterVersion {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onCreated: (name: string) => void;
+  onCreated: () => void;
 }
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
@@ -94,20 +81,23 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
     setSubmitting(true);
     setError(null);
     try {
-      const cr: Partial<UpgradePreflightCheck> = {
-        apiVersion: 'upgrade.managed.openshift.io/v1alpha1',
-        kind: 'UpgradePreflightCheck',
-        metadata: {
-          generateName: 'preflight-',
-          namespace: MUO_NS,
-          ...(description ? { annotations: { 'preflight.managed.openshift.io/description': description } } : {}),
-        } as any,
-        spec: { type: platform, desired: { version, channel } },
-      };
-      const created = await k8sCreate({ model: PREFLIGHT_MODEL as any, data: cr as any });
-      onCreated((created as any).metadata.name);
+      const resp = await consoleFetch(PREFLIGHT_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetVersion: version,
+          targetChannel: channel,
+          platform,
+          ...(description ? { description } : {}),
+        }),
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `HTTP ${resp.status}`);
+      }
       resetForm();
       onClose();
+      onCreated();
     } catch (e: any) {
       setError(e.message || String(e));
     } finally {
