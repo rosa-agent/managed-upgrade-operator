@@ -1,40 +1,87 @@
 import * as React from 'react';
 import {
-  ExpandableSection, List, ListItem, Alert,
+  ExpandableSection, List, ListItem, Alert, Label, TextContent, Text, TextVariants,
   DescriptionList, DescriptionListGroup, DescriptionListTerm, DescriptionListDescription,
 } from '@patternfly/react-core';
-import { type PreflightCheckResult } from '../types';
+import { type PreflightCheckResult, type CheckResult } from '../types';
 import { StatusBadge } from './StatusBadge';
 
 interface Props { checks: PreflightCheckResult[]; }
 
-export const PreflightCheckDetail: React.FC<Props> = ({ checks }) => (
-  <DescriptionList isHorizontal>
-    {checks.map((c) => (
-      <DescriptionListGroup key={c.name}>
-        <DescriptionListTerm>{c.name}</DescriptionListTerm>
-        <DescriptionListDescription>
-          <StatusBadge result={c.result} />
-          {c.execution.summary && <p style={{ marginTop: 4 }}>{c.execution.summary}</p>}
-          {c.action && (
-            <Alert variant="warning" isInline title="Recommended action" style={{ marginTop: 8 }}>
-              {c.action}
-            </Alert>
-          )}
-          {c.execution.findings && c.execution.findings.length > 0 && (
-            <ExpandableSection toggleText="Findings" style={{ marginTop: 4 }}>
-              <List>
-                {c.execution.findings.map((f, i) => <ListItem key={i}>{f}</ListItem>)}
-              </List>
-            </ExpandableSection>
-          )}
-          {c.execution.error && (
-            <Alert variant="danger" isInline title="Check error" style={{ marginTop: 8 }}>
-              {c.execution.error}
-            </Alert>
-          )}
-        </DescriptionListDescription>
-      </DescriptionListGroup>
-    ))}
-  </DescriptionList>
-);
+const SEVERITY: Record<CheckResult, number> = {
+  Error:    0,
+  Failed:   1,
+  Warning:  2,
+  Unknown:  3,
+  Passed:   4,
+  Skipped:  5,
+  TimedOut: 6,
+};
+
+const OWNER_LABEL: Record<string, { color: 'gold' | 'blue'; text: string }> = {
+  'customer':     { color: 'gold', text: 'Customer action required' },
+  'service-team': { color: 'blue', text: 'Service team action required' },
+};
+
+const ACTION_VARIANT: Partial<Record<CheckResult, 'danger' | 'warning'>> = {
+  Failed: 'danger',
+  Error:  'danger',
+  Warning: 'warning',
+};
+
+export const PreflightCheckDetail: React.FC<Props> = ({ checks }) => {
+  const sorted = [...checks].sort(
+    (a, b) => (SEVERITY[a.result] ?? 3) - (SEVERITY[b.result] ?? 3)
+  );
+
+  return (
+    <DescriptionList isHorizontal columnModifier={{ default: '1Col' }}>
+      {sorted.map((c) => {
+        const ownerCfg = c.owner ? OWNER_LABEL[c.owner] : null;
+        const actionVariant = ACTION_VARIANT[c.result] ?? 'warning';
+        return (
+          <DescriptionListGroup key={c.name}>
+            <DescriptionListTerm>
+              <TextContent>
+                <Text component={TextVariants.p}><strong>{c.name}</strong></Text>
+                {c.description && (
+                  <Text component={TextVariants.small} style={{ color: 'var(--pf-v5-global--Color--200)' }}>
+                    {c.description}
+                  </Text>
+                )}
+              </TextContent>
+            </DescriptionListTerm>
+            <DescriptionListDescription>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <StatusBadge result={c.result} />
+                {ownerCfg && (c.result === 'Failed' || c.result === 'Error' || c.result === 'Warning') && (
+                  <Label color={ownerCfg.color} isCompact>{ownerCfg.text}</Label>
+                )}
+              </div>
+              {c.execution.summary && (
+                <p style={{ marginTop: 4, marginBottom: 0 }}>{c.execution.summary}</p>
+              )}
+              {c.execution.findings && c.execution.findings.length > 0 && (
+                <ExpandableSection toggleText={`${c.execution.findings.length} finding(s)`} style={{ marginTop: 4 }}>
+                  <List>
+                    {c.execution.findings.map((f, i) => <ListItem key={i}>{f}</ListItem>)}
+                  </List>
+                </ExpandableSection>
+              )}
+              {c.action && (
+                <Alert variant={actionVariant} isInline title="Recommended action" style={{ marginTop: 8 }}>
+                  {c.action}
+                </Alert>
+              )}
+              {c.execution.error && (
+                <Alert variant="danger" isInline title="Check error" style={{ marginTop: 8 }}>
+                  {c.execution.error}
+                </Alert>
+              )}
+            </DescriptionListDescription>
+          </DescriptionListGroup>
+        );
+      })}
+    </DescriptionList>
+  );
+};

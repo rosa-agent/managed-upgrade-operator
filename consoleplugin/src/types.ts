@@ -1,3 +1,5 @@
+import type { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
+
 export type CheckResult = 'Passed' | 'Warning' | 'Failed' | 'Error' | 'Skipped' | 'TimedOut' | 'Unknown';
 export type CheckOwner = 'customer' | 'service-team';
 export type CheckExecutionState = 'Completed' | 'Error' | 'Skipped' | 'TimedOut';
@@ -21,14 +23,6 @@ export interface PreflightCheckResult {
   execution: CheckExecution;
 }
 
-export interface K8sCondition {
-  type: string;
-  status: 'True' | 'False' | 'Unknown';
-  reason?: string;
-  message?: string;
-  lastTransitionTime?: string;
-}
-
 export interface UpgradePreflightCheckStatus {
   startedAt?: string;
   completedAt?: string;
@@ -37,18 +31,10 @@ export interface UpgradePreflightCheckStatus {
   checksWarned?: number;
   checksFailed?: number;
   checksErrored?: number;
-  conditions?: K8sCondition[];
   checks?: PreflightCheckResult[];
 }
 
-export interface UpgradePreflightCheck {
-  apiVersion: string;
-  kind: string;
-  metadata: {
-    name: string;
-    namespace: string;
-    creationTimestamp?: string;
-  };
+export interface UpgradePreflightCheck extends K8sResourceCommon {
   spec: {
     desired: { version: string; channel: string };
     type: 'OSD' | 'ARO';

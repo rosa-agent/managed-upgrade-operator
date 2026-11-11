@@ -4,7 +4,6 @@ import {
   Button, Toolbar, ToolbarContent, ToolbarItem,
   EmptyState, EmptyStateBody, EmptyStateActions, EmptyStateFooter,
   Spinner, Alert,
-  ExpandableSection,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
@@ -27,7 +26,7 @@ export const PreflightCheckPage: React.FC = () => {
 
   const sorted = React.useMemo(
     () => [...(checks ?? [])].sort((a, b) =>
-      (b.metadata.creationTimestamp ?? '').localeCompare(a.metadata.creationTimestamp ?? '')
+      (b.metadata?.creationTimestamp ?? '').localeCompare(a.metadata?.creationTimestamp ?? '')
     ),
     [checks],
   );
@@ -44,7 +43,7 @@ export const PreflightCheckPage: React.FC = () => {
         <Toolbar>
           <ToolbarContent>
             <ToolbarItem>
-              <Button onClick={() => setCreateOpen(true)}>Run New Check</Button>
+              <Button variant="primary" onClick={() => setCreateOpen(true)}>Run New Check</Button>
             </ToolbarItem>
           </ToolbarContent>
         </Toolbar>
@@ -58,7 +57,7 @@ export const PreflightCheckPage: React.FC = () => {
             </EmptyStateBody>
             <EmptyStateFooter>
               <EmptyStateActions>
-                <Button onClick={() => setCreateOpen(true)}>Run New Check</Button>
+                <Button variant="primary" onClick={() => setCreateOpen(true)}>Run New Check</Button>
               </EmptyStateActions>
             </EmptyStateFooter>
           </EmptyState>
@@ -75,33 +74,36 @@ export const PreflightCheckPage: React.FC = () => {
                 <Th>Passed</Th>
                 <Th>Warned</Th>
                 <Th>Failed</Th>
+                <Th>Errored</Th>
                 <Th>Created</Th>
                 <Th>Completed</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {sorted.map((pfc) => {
+              {sorted.map((pfc, rowIndex) => {
                 const s = pfc.status ?? {};
-                const isExpanded = !!expanded[pfc.metadata.name];
+                const name = pfc.metadata?.name ?? '';
+                const isExpanded = !!expanded[name];
                 return (
-                  <React.Fragment key={pfc.metadata.name}>
+                  <React.Fragment key={name}>
                     <Tr>
                       <Td
-                        expand={{ isExpanded, onToggle: () => toggle(pfc.metadata.name), rowIndex: 0 }}
+                        expand={{ isExpanded, onToggle: () => toggle(name), rowIndex }}
                       />
-                      <Td>{pfc.metadata.name}</Td>
+                      <Td>{name}</Td>
                       <Td>{pfc.spec.desired.version}</Td>
                       <Td>{pfc.spec.desired.channel}</Td>
                       <Td>{s.overallResult ? <StatusBadge result={s.overallResult} /> : <Spinner size="sm" />}</Td>
                       <Td>{s.checksPassed ?? '—'}</Td>
                       <Td>{s.checksWarned ?? '—'}</Td>
                       <Td>{s.checksFailed ?? '—'}</Td>
-                      <Td>{pfc.metadata.creationTimestamp ? new Date(pfc.metadata.creationTimestamp).toLocaleString() : '—'}</Td>
+                      <Td>{s.checksErrored ?? '—'}</Td>
+                      <Td>{pfc.metadata?.creationTimestamp ? new Date(pfc.metadata.creationTimestamp).toLocaleString() : '—'}</Td>
                       <Td>{s.completedAt ? new Date(s.completedAt).toLocaleString() : '—'}</Td>
                     </Tr>
                     {isExpanded && (
                       <Tr isExpanded>
-                        <Td colSpan={10}>
+                        <Td colSpan={11}>
                           {s.checks ? (
                             <PreflightCheckDetail checks={s.checks} />
                           ) : (
