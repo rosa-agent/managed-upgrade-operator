@@ -4,7 +4,7 @@
   "displayName": "Upgrade Preflight Checks",
   "description": "Run and view upgrade readiness checks for OpenShift clusters",
   "exposedModules": {
-    "PreflightCheckPage": "./components/PreflightCheckPage"
+    "PreflightCheckPage": "./index"
   },
   "customTranslations": {}
 }
