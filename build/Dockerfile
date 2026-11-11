@@ -8,23 +8,12 @@ COPY . .
 RUN make go-build
 
 ####
-FROM node:20-slim AS plugin-builder
-
-WORKDIR /consoleplugin
-COPY consoleplugin/package.json consoleplugin/package-lock.json* ./
-RUN npm install --legacy-peer-deps
-COPY consoleplugin/src/ ./src/
-COPY consoleplugin/tsconfig.json consoleplugin/webpack.config.js consoleplugin/plugin.json consoleplugin/console-extensions.json ./
-RUN npm run build
-
-####
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1792742033
 
 ENV USER_UID=1001 \
     USER_NAME=managed-upgrade-operator
 
 COPY --from=builder /workdir/build/_output/bin/* /usr/local/bin/
-COPY --from=plugin-builder /consoleplugin/dist/ /usr/share/consoleplugin/
 
 COPY build/bin /usr/local/bin
 COPY LICENSE /licenses/

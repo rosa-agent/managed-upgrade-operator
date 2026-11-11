@@ -10,9 +10,9 @@ spec:
   backend:
     type: Service
     service:
-      name: managed-upgrade-operator-preflight
+      name: upgradediags
       namespace: openshift-managed-upgrade-operator
-      port: 8443
+      port: 9443
       basePath: /
   proxy:
     - alias: muo-api

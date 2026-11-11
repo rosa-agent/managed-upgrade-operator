@@ -33,6 +33,10 @@ spec:
           description: Operator image to deploy
           type: string
           default: None
+        pluginImage:
+          description: Console plugin (upgradediags) image to deploy
+          type: string
+          default: None
       type: object
 test:
   template:
@@ -40,6 +44,7 @@ test:
     context:
       config:
         image: quay.io/repository/redhat-user-prod/openshift/managed-upgrade-operator:latest
+        pluginImage: quay.io/repository/redhat-user-prod/openshift/upgradediags:latest
       environment:
         openShift:
           version: "4.21.8"

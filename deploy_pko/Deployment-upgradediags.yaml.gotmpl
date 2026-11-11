@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: upgradediags
+  namespace: openshift-managed-upgrade-operator
+  annotations:
+    package-operator.run/phase: deploy
+    package-operator.run/collision-protection: IfNoController
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: upgradediags
+  template:
+    metadata:
+      labels:
+        name: upgradediags
+      annotations:
+        openshift.io/required-scc: restricted-v2
+    spec:
+      serviceAccountName: managed-upgrade-operator
+      volumes:
+      - name: serving-cert
+        secret:
+          secretName: upgradediags-tls
+      containers:
+      - name: upgradediags
+        image: '{{ .config.pluginImage }}'
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9443
+          name: https
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 10m
+            memory: 50Mi
+          limits:
+            cpu: 50m
+            memory: 100Mi
+        volumeMounts:
+        - name: serving-cert
+          mountPath: /var/serving-cert
+          readOnly: true
+        terminationMessagePolicy: FallbackToLogsOnError
