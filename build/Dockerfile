@@ -12,9 +12,9 @@ FROM node:20-slim AS plugin-builder
 
 WORKDIR /consoleplugin
 COPY consoleplugin/package.json consoleplugin/package-lock.json* ./
-RUN npm install --omit=dev
+RUN npm install --legacy-peer-deps
 COPY consoleplugin/src/ ./src/
-COPY consoleplugin/tsconfig.json consoleplugin/webpack.config.js consoleplugin/plugin.json ./
+COPY consoleplugin/tsconfig.json consoleplugin/webpack.config.js consoleplugin/plugin.json consoleplugin/console-extensions.json ./
 RUN npm run build
 
 ####
