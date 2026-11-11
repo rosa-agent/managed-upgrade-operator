@@ -23,7 +23,7 @@ module.exports = {
   },
   plugins: [
     new ConsoleRemotePlugin({
-      // Disable module validation since we're exposing dynamically via index.ts
+      pluginMetadata: require('./plugin.json'),
       validateExtensionIntegrity: false,
     }),
   ],
