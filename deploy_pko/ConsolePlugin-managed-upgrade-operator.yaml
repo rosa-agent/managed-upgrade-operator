@@ -7,15 +7,10 @@ metadata:
     package-operator.run/collision-protection: IfNoController
 spec:
   displayName: "Upgrade Preflight Checks"
-  service:
-    name: managed-upgrade-operator-preflight
-    namespace: openshift-managed-upgrade-operator
-    port: 8443
-    basePath: /
-  proxy:
-  - type: Service
-    alias: preflight-api
+  backend:
+    type: Service
     service:
       name: managed-upgrade-operator-preflight
       namespace: openshift-managed-upgrade-operator
       port: 8443
+      basePath: /
