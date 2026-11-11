@@ -5,11 +5,11 @@ import {
   FormHelperText, HelperText, HelperTextItem,
   Alert, Spinner,
 } from '@patternfly/react-core';
-import { consoleFetch, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
+import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 
 const PREFLIGHT_API = '/api/plugins/managed-upgrade-operator/api/v1/preflight-checks';
 
-interface ClusterVersion {
+interface ClusterVersion extends K8sResourceCommon {
   spec?: { channel?: string };
   status?: {
     desired?: { version?: string };
