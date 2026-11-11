@@ -9,20 +9,18 @@ import { k8sCreate, useK8sWatchResource, type K8sResourceCommon } from '@openshi
 
 const MUO_NS = 'openshift-managed-upgrade-operator';
 
-// K8s model descriptor for the UpgradePreflightCheck CRD.
-// Used by k8sCreate to construct the correct API path.
-// k8sCreate uses model.apiVersion as the full "{group}/{version}" string to
-// construct the API path: /apis/{group}/{version}/namespaces/...
+// K8sModel for k8sCreate. SDK uses apiGroup (not "group") for the API group,
+// and apiVersion for just the version token.
+// URL built: /apis/{apiGroup}/{apiVersion}/namespaces/{ns}/{plural}
 const PREFLIGHT_MODEL = {
-  apiVersion: 'upgrade.managed.openshift.io/v1alpha1',
-  kind: 'UpgradePreflightCheck',
-  plural: 'upgradepreflightchecks',
-  namespaced: true,
   abbr: 'PFC',
+  apiGroup: 'upgrade.managed.openshift.io',
+  apiVersion: 'v1alpha1',
+  kind: 'UpgradePreflightCheck',
   label: 'Preflight Check',
   labelPlural: 'Preflight Checks',
-  group: 'upgrade.managed.openshift.io',
-  version: 'v1alpha1',
+  namespaced: true,
+  plural: 'upgradepreflightchecks',
 };
 
 interface ClusterVersion extends K8sResourceCommon {
