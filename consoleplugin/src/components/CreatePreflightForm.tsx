@@ -5,9 +5,22 @@ import {
   FormHelperText, HelperText, HelperTextItem,
   Alert, Spinner,
 } from '@patternfly/react-core';
-import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
+import { k8sCreate, useK8sWatchResource, type K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 
-const PREFLIGHT_API = '/api/plugins/managed-upgrade-operator/api/v1/preflight-checks';
+const MUO_NS = 'openshift-managed-upgrade-operator';
+
+// K8s model descriptor for the UpgradePreflightCheck CRD.
+// Used by k8sCreate to construct the correct API path.
+const PREFLIGHT_MODEL = {
+  apiVersion: 'v1alpha1',
+  kind: 'UpgradePreflightCheck',
+  plural: 'upgradepreflightchecks',
+  namespaced: true,
+  abbr: 'PFC',
+  label: 'Preflight Check',
+  labelPlural: 'Preflight Checks',
+  group: 'upgrade.managed.openshift.io',
+};
 
 interface ClusterVersion extends K8sResourceCommon {
   spec?: { channel?: string };
@@ -43,7 +56,6 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
     name: 'version',
   });
 
-  // Derive cluster state
   const currentVersion = cv?.status?.desired?.version
     ?? cv?.status?.history?.find(h => h.state === 'Completed')?.version
     ?? '';
@@ -51,11 +63,9 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
   const availableUpdates = cv?.status?.availableUpdates ?? [];
   const conditionalUpdates = cv?.status?.conditionalUpdates ?? [];
 
-  // Parse current channel for sibling channel suggestions
   const channelMatch = currentChannel.match(/^(stable|fast|candidate|eus)-(\d+\.\d+)$/);
   const channelXY = channelMatch?.[2] ?? '';
 
-  // Seed channel from cluster when form first opens
   React.useEffect(() => {
     if (isOpen && currentChannel && !channel) {
       setChannel(currentChannel);
@@ -81,25 +91,42 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
     setSubmitting(true);
     setError(null);
     try {
-      const resp = await consoleFetch(PREFLIGHT_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetVersion: version,
-          targetChannel: channel,
-          platform,
-          ...(description ? { description } : {}),
-        }),
-      });
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(text || `HTTP ${resp.status}`);
+      const annotations: Record<string, string> = {
+        // Auto-delete after 24h to prevent resource accumulation
+        'preflight.managed.openshift.io/delete-after': new Date(Date.now() + 86400_000).toISOString(),
+      };
+      if (description) {
+        annotations['preflight.managed.openshift.io/description'] = description;
       }
+
+      await k8sCreate({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        model: PREFLIGHT_MODEL as any,
+        data: {
+          apiVersion: 'upgrade.managed.openshift.io/v1alpha1',
+          kind: 'UpgradePreflightCheck',
+          metadata: {
+            generateName: 'preflight-',
+            namespace: MUO_NS,
+            annotations,
+          },
+          spec: {
+            type: platform,
+            desired: { version, channel },
+            // Required by embedded UpgradeConfigSpec; preflight controller ignores these
+            // but the API server validates their presence.
+            upgradeAt: new Date().toISOString(),
+            PDBForceDrainTimeout: 60,
+          },
+        },
+      });
+
       resetForm();
       onClose();
       onCreated();
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg || 'Failed to create preflight check');
     } finally {
       setSubmitting(false);
     }
@@ -125,7 +152,7 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
         {currentVersion && (
           <Alert variant="info" isInline title={`Current cluster version: ${currentVersion}`} />
         )}
-        {error && <Alert variant="danger" isInline title="Error creating preflight check">{error}</Alert>}
+        {error && <Alert variant="danger" isInline title="Failed to create preflight check">{error}</Alert>}
 
         {/* ── Version ── */}
         <FormGroup label="Target Version" isRequired fieldId="version">
@@ -156,12 +183,12 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
                 )}
                 {conditionalUpdates.length > 0 && (
                   <>
-                    <FormSelectOption value="" label="— May Have Risks —" isDisabled />
+                    <FormSelectOption value="" label="— Conditional Updates (may have risks) —" isDisabled />
                     {conditionalUpdates.map(u => (
                       <FormSelectOption
                         key={u.release.version}
                         value={u.release.version}
-                        label={`${u.release.version} ⚠️${u.risks?.[0]?.name ? ` — ${u.risks[0].name}` : ''}`}
+                        label={`${u.release.version}${u.risks?.[0]?.name ? ` — ${u.risks[0].name}` : ''}`}
                       />
                     ))}
                   </>
@@ -173,15 +200,14 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
                 <HelperText>
                   <HelperTextItem>
                     {availableUpdates.length === 0 && conditionalUpdates.length === 0 && currentVersion
-                      ? 'Cluster is on the latest version. Use "Custom version…" to test any target.'
-                      : 'Select from available upgrade targets or choose a custom version.'}
+                      ? 'No updates available from CVO — use "Custom version…" to test any target.'
+                      : 'Select from cluster\'s available upgrade targets, or enter a custom version.'}
                   </HelperTextItem>
                 </HelperText>
               </FormHelperText>
             </>
           )}
 
-          {/* Fallback or custom text input */}
           {cvLoaded && (cvError || useCustomVersion) && (
             <>
               {cvError && <Alert variant="warning" isInline title="Unable to load available versions — enter manually" />}
@@ -193,20 +219,17 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
                 validated={versionError ? 'error' : 'default'}
                 isRequired
               />
-              {useCustomVersion && (
-                <FormHelperText>
-                  <HelperText>
-                    <HelperTextItem>
-                      {versionError || <Button variant="link" isInline onClick={() => { setUseCustomVersion(false); setVersion(''); }}>← Back to version list</Button>}
-                    </HelperTextItem>
-                  </HelperText>
-                </FormHelperText>
-              )}
-              {!useCustomVersion && versionError && (
-                <FormHelperText>
-                  <HelperText><HelperTextItem variant="error">{versionError}</HelperTextItem></HelperText>
-                </FormHelperText>
-              )}
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem variant={versionError ? 'error' : 'default'}>
+                    {versionError || (
+                      useCustomVersion
+                        ? <Button variant="link" isInline onClick={() => { setUseCustomVersion(false); setVersion(''); }}>← Back to version list</Button>
+                        : 'Enter the target version in X.Y.Z format'
+                    )}
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
             </>
           )}
         </FormGroup>
@@ -230,7 +253,7 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
                 )}
                 {channelXY && (
                   <>
-                    <FormSelectOption value="" label="— Common Channels —" isDisabled />
+                    <FormSelectOption value="" label="— Sibling Channels —" isDisabled />
                     {['stable', 'fast', 'candidate'].map(t => {
                       const c = `${t}-${channelXY}`;
                       return c !== currentChannel
@@ -244,10 +267,8 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
               </FormSelect>
               <FormHelperText>
                 <HelperText>
-                  <HelperTextItem>
-                    {channelError
-                      ? <span style={{ color: 'var(--pf-v5-global--danger-color--100)' }}>{channelError}</span>
-                      : 'Update channel — stable (production), fast (early access), candidate (pre-release)'}
+                  <HelperTextItem variant={channelError ? 'error' : 'default'}>
+                    {channelError || 'stable (production), fast (early access), candidate (pre-release)'}
                   </HelperTextItem>
                 </HelperText>
               </FormHelperText>
@@ -265,7 +286,9 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
               <FormHelperText>
                 <HelperText>
                   <HelperTextItem variant={channelError ? 'error' : 'default'}>
-                    {channelError || <Button variant="link" isInline onClick={() => { setUseCustomChannel(false); setChannel(currentChannel); }}>← Back to channel list</Button>}
+                    {channelError || (
+                      <Button variant="link" isInline onClick={() => { setUseCustomChannel(false); setChannel(currentChannel); }}>← Back to channel list</Button>
+                    )}
                   </HelperTextItem>
                 </HelperText>
               </FormHelperText>
