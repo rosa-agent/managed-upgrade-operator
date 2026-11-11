@@ -1,2 +1,2 @@
-// SDK 4.x: Expose components for $codeRef resolution
-export { PreflightCheckPage } from './components/PreflightCheckPage';
+// SDK 4.x: $codeRef resolves the exposed module's default export
+export { default } from './components/PreflightCheckPage';
