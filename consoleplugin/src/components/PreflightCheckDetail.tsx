@@ -1,6 +1,6 @@
 import * as React from 'react';
 import {
-  ExpandableSection, List, ListItem, Alert, Label, TextContent, Text, TextVariants,
+  ExpandableSection, List, ListItem, Alert, Label,
   DescriptionList, DescriptionListGroup, DescriptionListTerm, DescriptionListDescription,
 } from '@patternfly/react-core';
 import { type PreflightCheckResult, type CheckResult } from '../types';
@@ -42,14 +42,12 @@ export const PreflightCheckDetail: React.FC<Props> = ({ checks }) => {
         return (
           <DescriptionListGroup key={c.name}>
             <DescriptionListTerm>
-              <TextContent>
-                <Text component={TextVariants.p}><strong>{c.name}</strong></Text>
-                {c.description && (
-                  <Text component={TextVariants.small} style={{ color: 'var(--pf-v5-global--Color--200)' }}>
-                    {c.description}
-                  </Text>
-                )}
-              </TextContent>
+              <strong>{c.name}</strong>
+              {c.description && (
+                <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', color: 'var(--pf-v5-global--Color--200)', marginTop: 2 }}>
+                  {c.description}
+                </div>
+              )}
             </DescriptionListTerm>
             <DescriptionListDescription>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>

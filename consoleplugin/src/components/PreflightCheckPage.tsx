@@ -2,7 +2,7 @@ import * as React from 'react';
 import {
   Page, PageSection, PageSectionVariants, Title,
   Button, Toolbar, ToolbarContent, ToolbarItem,
-  EmptyState, EmptyStateBody, EmptyStateActions, EmptyStateFooter,
+  EmptyState, EmptyStateBody,
   Spinner, Alert,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
@@ -55,11 +55,9 @@ export const PreflightCheckPage: React.FC = () => {
             <EmptyStateBody>
               Run preflight checks before upgrading to validate cluster readiness.
             </EmptyStateBody>
-            <EmptyStateFooter>
-              <EmptyStateActions>
-                <Button variant="primary" onClick={() => setCreateOpen(true)}>Run New Check</Button>
-              </EmptyStateActions>
-            </EmptyStateFooter>
+            <Button variant="primary" onClick={() => setCreateOpen(true)} style={{ marginTop: 16 }}>
+              Run New Check
+            </Button>
           </EmptyState>
         )}
         {loaded && sorted.length > 0 && (
