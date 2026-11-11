@@ -1,7 +1,7 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: managed-upgrade-operator-preflight
+  name: muo-preflight
   namespace: openshift-managed-upgrade-operator
   annotations:
     package-operator.run/phase: deploy
