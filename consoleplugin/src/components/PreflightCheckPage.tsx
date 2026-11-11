@@ -2,7 +2,7 @@ import * as React from 'react';
 import {
   Page, PageSection, PageSectionVariants, Title,
   Button, Toolbar, ToolbarContent, ToolbarItem,
-  EmptyState, EmptyStateBody,
+  EmptyState, EmptyStateBody, EmptyStateActions, EmptyStateFooter,
   Spinner, Alert,
   ExpandableSection,
 } from '@patternfly/react-core';
@@ -53,7 +53,14 @@ export const PreflightCheckPage: React.FC = () => {
         {error && <Alert variant="danger" title="Failed to load preflight checks">{String(error)}</Alert>}
         {loaded && !error && sorted.length === 0 && (
           <EmptyState>
-            <EmptyStateBody>No preflight checks found. Click "Run New Check" to get started.</EmptyStateBody>
+            <EmptyStateBody>
+              Run preflight checks before upgrading to validate cluster readiness.
+            </EmptyStateBody>
+            <EmptyStateFooter>
+              <EmptyStateActions>
+                <Button onClick={() => setCreateOpen(true)}>Run New Check</Button>
+              </EmptyStateActions>
+            </EmptyStateFooter>
           </EmptyState>
         )}
         {loaded && sorted.length > 0 && (
@@ -68,6 +75,7 @@ export const PreflightCheckPage: React.FC = () => {
                 <Th>Passed</Th>
                 <Th>Warned</Th>
                 <Th>Failed</Th>
+                <Th>Created</Th>
                 <Th>Completed</Th>
               </Tr>
             </Thead>
@@ -88,11 +96,12 @@ export const PreflightCheckPage: React.FC = () => {
                       <Td>{s.checksPassed ?? '—'}</Td>
                       <Td>{s.checksWarned ?? '—'}</Td>
                       <Td>{s.checksFailed ?? '—'}</Td>
+                      <Td>{pfc.metadata.creationTimestamp ? new Date(pfc.metadata.creationTimestamp).toLocaleString() : '—'}</Td>
                       <Td>{s.completedAt ? new Date(s.completedAt).toLocaleString() : '—'}</Td>
                     </Tr>
                     {isExpanded && (
                       <Tr isExpanded>
-                        <Td colSpan={9}>
+                        <Td colSpan={10}>
                           {s.checks ? (
                             <PreflightCheckDetail checks={s.checks} />
                           ) : (
