@@ -150,6 +150,14 @@ func (s *PreflightHTTPServer) Start(ctx context.Context) error {
 	return nil
 }
 
+// CatalogEntry describes a single registered preflight check for the catalog endpoint.
+type CatalogEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Owner       string `json:"owner"`
+	TimeoutSecs int    `json:"timeoutSeconds,omitempty"`
+}
+
 // route dispatches based on method and path.
 func (s *PreflightHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 	// Catch any panic in a handler so a nil-pointer or unexpected error in this
@@ -164,18 +172,24 @@ func (s *PreflightHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	token := extractBearerToken(r)
-	if token == "" {
-		http.Error(w, "Authorization: Bearer <token> required", http.StatusUnauthorized)
-		return
-	}
-
 	// /api/v1/preflight-checks/{id} has 5 slash-separated parts after trim
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 	requestID := ""
 	if len(parts) == 5 {
 		requestID = parts[4]
+	}
+
+	// Catalog endpoint: returns registered check names/descriptions. No auth required.
+	if r.Method == http.MethodGet && requestID == "checks" {
+		s.handleCatalog(w)
+		return
+	}
+
+	token := extractBearerToken(r)
+	if token == "" {
+		http.Error(w, "Authorization: Bearer <token> required", http.StatusUnauthorized)
+		return
 	}
 
 	switch {
@@ -190,6 +204,27 @@ func (s *PreflightHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleCatalog returns the list of registered checks with their names, descriptions,
+// default owners, and timeouts. No authentication required — this is schema metadata.
+func (s *PreflightHTTPServer) handleCatalog(w http.ResponseWriter) {
+	entries := make([]CatalogEntry, 0, len(registeredChecks))
+	for _, c := range registeredChecks {
+		entry := CatalogEntry{
+			Name:        c.Name(),
+			Description: c.Description(),
+			Owner:       string(c.DefaultOwner()),
+		}
+		if t := c.DefaultTimeout(); t > 0 {
+			entry.TimeoutSecs = int(t.Seconds())
+		}
+		entries = append(entries, entry)
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"checks": entries,
+		"total":  len(entries),
+	})
 }
 
 func (s *PreflightHTTPServer) handleCreate(w http.ResponseWriter, r *http.Request, token string) {

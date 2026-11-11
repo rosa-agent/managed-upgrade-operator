@@ -91,3 +91,34 @@ var _ = Describe("validateCheckRequest", func() {
 		Expect(validateCheckRequest(req)).To(Succeed())
 	})
 })
+
+var _ = Describe("handleCatalog", func() {
+	It("returns all registered checks with name, description, owner", func() {
+		entries := make([]CatalogEntry, 0, len(registeredChecks))
+		for _, c := range registeredChecks {
+			entry := CatalogEntry{
+				Name:        c.Name(),
+				Description: c.Description(),
+				Owner:       string(c.DefaultOwner()),
+			}
+			if t := c.DefaultTimeout(); t > 0 {
+				entry.TimeoutSecs = int(t.Seconds())
+			}
+			entries = append(entries, entry)
+		}
+		Expect(entries).To(HaveLen(len(registeredChecks)))
+		for _, e := range entries {
+			Expect(e.Name).NotTo(BeEmpty())
+			Expect(e.Description).NotTo(BeEmpty())
+			Expect(e.Owner).NotTo(BeEmpty())
+		}
+	})
+
+	It("includes UpgradeTarget in the catalog", func() {
+		names := make([]string, 0, len(registeredChecks))
+		for _, c := range registeredChecks {
+			names = append(names, c.Name())
+		}
+		Expect(names).To(ContainElements("UpgradeTarget", "ClusterOperators", "CriticalAlerts"))
+	})
+})

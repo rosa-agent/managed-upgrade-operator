@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+# kubectl-upgradediags — preflight check CLI for managed OpenShift clusters
+#
+# Usage:
+#   kubectl upgradediags --version 4.15.1 --channel stable-4.15
+#   oc upgradediags --version 4.15.1 --channel stable-4.15 --platform ARO
+#   kubectl upgradediags list
+#   kubectl upgradediags get <requestId>
+#   kubectl upgradediags checks
+#
+# Requires: oc or kubectl with cluster-admin or dedicated-admin access.
+
+set -euo pipefail
+
+NAMESPACE="${UPGRADEDIAGS_NAMESPACE:-openshift-managed-upgrade-operator}"
+TIMEOUT_MINS="${UPGRADEDIAGS_TIMEOUT:-10}"
+PLATFORM="${UPGRADEDIAGS_PLATFORM:-OSD}"
+VERSION=""
+CHANNEL=""
+SUBCOMMAND="${1:-run}"
+
+# ---------------------------------------------------------------------------
+# colour helpers (gracefully degrade if no tty)
+# ---------------------------------------------------------------------------
+if [ -t 1 ]; then
+  GREEN='\033[0;32m'; YELLOW='\033[0;33m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
+else
+  GREEN=''; YELLOW=''; RED=''; BOLD=''; NC=''
+fi
+
+info()    { echo -e "${BOLD}==> $*${NC}"; }
+ok()      { echo -e "  ${GREEN}✓${NC} $*"; }
+warn()    { echo -e "  ${YELLOW}⚠${NC} $*"; }
+fail()    { echo -e "  ${RED}✗${NC} $*"; }
+die()     { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [subcommand] [flags]
+
+Subcommands:
+  run      (default) Create and wait for a preflight check
+  list     List all preflight check results
+  get      Get a single result by requestId
+  checks   Show catalog of available checks (no auth needed)
+
+Flags (for 'run'):
+  --version   <VERSION>   Target OCP version (required), e.g. 4.15.1
+  --channel   <CHANNEL>   Target channel (required), e.g. stable-4.15
+  --platform  OSD|ARO     Cluster platform (default: OSD)
+  --timeout   <MINS>      Polling timeout in minutes (default: 10)
+  --namespace <NS>        MUO namespace (default: openshift-managed-upgrade-operator)
+
+Environment overrides:
+  UPGRADEDIAGS_NAMESPACE, UPGRADEDIAGS_PLATFORM, UPGRADEDIAGS_TIMEOUT
+
+Examples:
+  kubectl upgradediags --version 4.15.1 --channel stable-4.15
+  kubectl upgradediags list
+  kubectl upgradediags get a1b2c3d4-...
+  kubectl upgradediags checks
+EOF
+  exit 0
+}
+
+oc_or_kubectl() {
+  if command -v oc &>/dev/null; then oc "$@"; else kubectl "$@"; fi
+}
+
+get_token() {
+  oc_or_kubectl whoami --show-token 2>/dev/null || \
+    kubectl config view --raw -o jsonpath='{.users[0].user.token}' 2>/dev/null || \
+    die "Could not obtain bearer token. Run 'oc login' or ensure kubeconfig has a token."
+}
+
+get_route_url() {
+  local host
+  host=$(oc_or_kubectl get route managed-upgrade-operator-preflight \
+    -n "$NAMESPACE" -o jsonpath='{.spec.host}' 2>/dev/null) || \
+    die "Could not find Route managed-upgrade-operator-preflight in namespace $NAMESPACE"
+  echo "https://${host}"
+}
+
+api_call() {
+  local method="$1" path="$2"
+  shift 2
+  local url token
+  url="$(get_route_url)${path}"
+  token="$(get_token)"
+  curl -sS --fail-with-body -X "$method" \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    "$@" "$url"
+}
+
+# ---------------------------------------------------------------------------
+# print a completed CheckResponse as a human-readable table
+# ---------------------------------------------------------------------------
+print_result() {
+  local json="$1"
+  local overall status rid version channel
+
+  rid=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('requestId',''))" 2>/dev/null || true)
+  status=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" 2>/dev/null || true)
+  overall=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('overallStatus',''))" 2>/dev/null || true)
+  version=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('targetVersion',''))" 2>/dev/null || true)
+  channel=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('targetChannel',''))" 2>/dev/null || true)
+  local msg
+  msg=$(echo "$json" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" 2>/dev/null || true)
+
+  echo ""
+  info "Preflight Check Results"
+  echo "  Request ID : $rid"
+  echo "  Status     : $status"
+  echo "  Target     : $version  ($channel)"
+
+  case "$overall" in
+    passed)  echo -e "  Overall    : ${GREEN}${BOLD}PASSED${NC} — $msg" ;;
+    warning) echo -e "  Overall    : ${YELLOW}${BOLD}WARNING${NC} — $msg" ;;
+    failed)  echo -e "  Overall    : ${RED}${BOLD}FAILED${NC} — $msg" ;;
+    *)       echo "  Overall    : $overall — $msg" ;;
+  esac
+
+  echo ""
+  printf "  %-45s %-10s %-12s %s\n" "CHECK" "RESULT" "OWNER" "ACTION / FINDINGS"
+  printf "  %-45s %-10s %-12s %s\n" "-----" "------" "-----" "-----------------"
+
+  echo "$json" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for c in d.get('results', []):
+    name    = c.get('name', '')[:45]
+    status  = c.get('status', '')
+    owner   = c.get('owner', '')[:12]
+    action  = c.get('action', '') or c.get('message', '')
+    findings= c.get('details', [])
+    print(f'  {name:<45} {status:<10} {owner:<12} {action}')
+    for f in findings[:3]:
+        print(f'    {chr(0x25e6)} {f}')
+    if len(findings) > 3:
+        print(f'    ... and {len(findings)-3} more finding(s)')
+" 2>/dev/null || echo "$json"
+  echo ""
+}
+
+# ---------------------------------------------------------------------------
+# parse flags
+# ---------------------------------------------------------------------------
+shift_subcommand=0
+case "${SUBCOMMAND}" in
+  run|list|get|checks|help|-h|--help) shift_subcommand=1 ;;
+  --*) SUBCOMMAND="run" ;;  # no subcommand — treat args as flags for 'run'
+  *) usage ;;
+esac
+[ "$shift_subcommand" = "1" ] && shift || true
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version)   VERSION="$2";   shift 2 ;;
+    --channel)   CHANNEL="$2";   shift 2 ;;
+    --platform)  PLATFORM="$2";  shift 2 ;;
+    --timeout)   TIMEOUT_MINS="$2"; shift 2 ;;
+    --namespace) NAMESPACE="$2"; shift 2 ;;
+    -h|--help)   usage ;;
+    *)           REQ_ID="${1:-}"; shift ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# subcommands
+# ---------------------------------------------------------------------------
+case "$SUBCOMMAND" in
+  # ---- checks catalog (no auth) ------------------------------------------
+  checks)
+    info "Available preflight checks"
+    url="$(get_route_url)/api/v1/preflight-checks/checks"
+    curl -sS "$url" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"  Total: {d['total']}\n\")
+for c in d['checks']:
+    secs = c.get('timeoutSeconds', 0)
+    tout = f\"{secs}s\" if secs else 'default'
+    print(f\"  {c['name']:<45} owner={c['owner']:<12} timeout={tout}\")
+    print(f\"    {c['description']}\")
+    print()
+"
+    ;;
+
+  # ---- list ---------------------------------------------------------------
+  list)
+    info "Listing preflight checks in $NAMESPACE"
+    result=$(api_call GET /api/v1/preflight-checks)
+    echo "$result" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+reqs = d.get('requests', [])
+print(f'  Total: {len(reqs)}\n')
+print(f'  {\"REQUEST ID\":<38} {\"STATUS\":<12} {\"OVERALL\":<10} {\"VERSION\":<12} COMPLETED')
+print(f'  {\"-\"*38} {\"-\"*12} {\"-\"*10} {\"-\"*12} ---------')
+for r in reqs:
+    done = r.get('completedAt', {}) or {}
+    ts   = (done or {}).get('Time', '') if isinstance(done, dict) else str(done)
+    print(f'  {r[\"requestId\"]:<38} {r[\"status\"]:<12} {r.get(\"overallStatus\",\"-\"):<10} {r.get(\"targetVersion\",\"-\"):<12} {ts}')
+"
+    ;;
+
+  # ---- get ----------------------------------------------------------------
+  get)
+    [ -z "${REQ_ID:-}" ] && die "Usage: $(basename "$0") get <requestId>"
+    result=$(api_call GET "/api/v1/preflight-checks/${REQ_ID}")
+    print_result "$result"
+    ;;
+
+  # ---- run (default) -------------------------------------------------------
+  run)
+    [ -z "$VERSION" ] && die "--version is required. E.g. --version 4.15.1"
+    [ -z "$CHANNEL" ] && die "--channel is required. E.g. --channel stable-4.15"
+
+    info "Creating preflight check: $VERSION ($CHANNEL) [$PLATFORM]"
+    body=$(printf '{"targetVersion":"%s","targetChannel":"%s","platform":"%s","namePrefix":"upgradediags"}' \
+      "$VERSION" "$CHANNEL" "$PLATFORM")
+    response=$(api_call POST /api/v1/preflight-checks -d "$body")
+    request_id=$(echo "$response" | python3 -c "import sys,json; print(json.load(sys.stdin)['requestId'])" 2>/dev/null) \
+      || die "Failed to create check: $response"
+
+    echo "  Request ID : $request_id"
+    echo "  Polling for up to ${TIMEOUT_MINS}m ..."
+
+    deadline=$(( $(date +%s) + TIMEOUT_MINS * 60 ))
+    while true; do
+      sleep 10
+      result=$(api_call GET "/api/v1/preflight-checks/${request_id}" 2>/dev/null) || continue
+      status=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || true)
+      completed=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('checksCompleted',0))" 2>/dev/null || echo 0)
+      total=$(echo "$result"    | python3 -c "import sys,json; print(json.load(sys.stdin).get('checksTotal',0))"     2>/dev/null || echo 0)
+      printf '\r  Progress: %s/%s checks complete (status: %s)      ' "$completed" "$total" "$status"
+
+      if [ "$status" = "completed" ]; then
+        echo ""
+        print_result "$result"
+        overall=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('overallStatus',''))" 2>/dev/null || true)
+        case "$overall" in
+          passed)  exit 0 ;;
+          warning) exit 2 ;;
+          *)       exit 1 ;;
+        esac
+      fi
+
+      if [ "$(date +%s)" -gt "$deadline" ]; then
+        echo ""
+        die "Timed out after ${TIMEOUT_MINS}m. Check is still running. Use 'kubectl upgradediags get ${request_id}' to follow up."
+      fi
+    done
+    ;;
+
+  *) usage ;;
+esac
