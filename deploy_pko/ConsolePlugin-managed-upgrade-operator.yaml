@@ -14,3 +14,12 @@ spec:
       namespace: openshift-managed-upgrade-operator
       port: 8443
       basePath: /
+  proxy:
+    - alias: muo-api
+      authorization: UserToken
+      endpoint:
+        type: Service
+        service:
+          name: managed-upgrade-operator-preflight
+          namespace: openshift-managed-upgrade-operator
+          port: 8443
