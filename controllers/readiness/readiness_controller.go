@@ -7,9 +7,7 @@ import (
 
 	"github.com/go-logr/logr"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
-	muocfg "github.com/openshift/managed-upgrade-operator/config"
 	cv "github.com/openshift/managed-upgrade-operator/pkg/clusterversion"
-	"github.com/openshift/managed-upgrade-operator/pkg/configmanager"
 	"github.com/openshift/managed-upgrade-operator/pkg/dvo"
 	"github.com/openshift/managed-upgrade-operator/pkg/machinery"
 	"github.com/openshift/managed-upgrade-operator/pkg/metrics"
@@ -26,7 +24,6 @@ import (
 var log = logf.Log.WithName("controller_upgradereadinesscheck")
 
 const (
-	readinessControllerFeatureGate = "ReadinessController"
 	maxReadinessChecks    = 10
 	readinessCheckTTL     = 24 * time.Hour
 	deleteAfterAnnotation = "readiness.managed.openshift.io/delete-after"
@@ -47,23 +44,6 @@ const (
 //     require the OCM API (ListGateAgreements).
 var _ = "ocmOnlyChecks — see comment above"
 
-type readinessGateConfig struct {
-	FeatureGate struct {
-		Enabled []string `yaml:"enabled"`
-	} `yaml:"featureGate"`
-}
-
-func (c *readinessGateConfig) IsValid() error { return nil }
-
-func (c *readinessGateConfig) isEnabled() bool {
-	for _, f := range c.FeatureGate.Enabled {
-		if f == readinessControllerFeatureGate {
-			return true
-		}
-	}
-	return false
-}
-
 // ReconcileUpgradeReadinessCheck reconciles UpgradeReadinessCheck objects.
 type ReconcileUpgradeReadinessCheck struct {
 	Client               client.Client
@@ -71,7 +51,6 @@ type ReconcileUpgradeReadinessCheck struct {
 	MetricsClientBuilder metrics.MetricsBuilder
 	CvClientBuilder      cv.ClusterVersionBuilder
 	Machinery            machinery.Machinery
-	ConfigManagerBuilder configmanager.ConfigManagerBuilder
 	DvoClientBuilder     dvo.DvoClientBuilder
 }
 
@@ -111,20 +90,6 @@ func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reco
 			result, err = reconcile.Result{}, nil
 		}
 	}()
-
-	target := muocfg.CMTarget{Namespace: req.Namespace}
-	cmTarget, err := target.NewCMTarget()
-	if err != nil {
-		return reconcile.Result{}, err
-	}
-	gateCfg := &readinessGateConfig{}
-	if err = r.ConfigManagerBuilder.New(r.Client, cmTarget).Into(gateCfg); err != nil {
-		logger.Info("Could not read MUO ConfigMap; readiness controller inactive", "error", err.Error())
-		return reconcile.Result{}, nil
-	}
-	if !gateCfg.isEnabled() {
-		return reconcile.Result{}, nil
-	}
 
 	logger.Info("Reconciling UpgradeReadinessCheck")
 

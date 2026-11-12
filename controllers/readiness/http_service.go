@@ -13,10 +13,8 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
-	"gopkg.in/yaml.v2"
 	authnv1 "k8s.io/api/authentication/v1"
 	authzv1 "k8s.io/api/authorization/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -254,9 +252,6 @@ func (s *ReadinessHTTPServer) handleCreate(w http.ResponseWriter, r *http.Reques
 
 	s.Logger.Info("Readiness check created via HTTP", "requestId", requestID, "crName", cr.Name)
 
-	// Warn if feature gate is not enabled (checks won't run)
-	s.warnIfFeatureGateDisabled(ctx, requestID)
-
 	writeJSON(w, http.StatusAccepted, map[string]interface{}{
 		"requestId": requestID,
 		"status":    "accepted",
@@ -325,46 +320,6 @@ func (s *ReadinessHTTPServer) handleDelete(w http.ResponseWriter, r *http.Reques
 	}
 	s.Logger.Info("Readiness check deleted via HTTP", "requestId", requestID, "crName", cr.Name)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// warnIfFeatureGateDisabled checks if the ReadinessController feature gate is enabled
-// and logs a warning if not, helping users debug why their checks aren't running.
-func (s *ReadinessHTTPServer) warnIfFeatureGateDisabled(ctx context.Context, requestID string) {
-	cm := &corev1.ConfigMap{}
-	if err := s.Client.Get(ctx, client.ObjectKey{
-		Namespace: s.Namespace,
-		Name:      "managed-upgrade-operator-config",
-	}, cm); err != nil {
-		// ConfigMap not found or error - skip check (don't block request)
-		return
-	}
-
-	configYAML, ok := cm.Data["config.yaml"]
-	if !ok {
-		return
-	}
-
-	var config struct {
-		FeatureGate struct {
-			Enabled []string `yaml:"enabled"`
-		} `yaml:"featureGate"`
-	}
-
-	if err := yaml.Unmarshal([]byte(configYAML), &config); err != nil {
-		return
-	}
-
-	// Check if ReadinessController is enabled
-	for _, f := range config.FeatureGate.Enabled {
-		if f == "ReadinessController" {
-			return // Feature gate enabled, all good
-		}
-	}
-
-	// Feature gate not enabled - warn user
-	s.Logger.Info("ReadinessController feature gate not enabled - check will remain pending until enabled",
-		"requestId", requestID,
-		"help", "Add 'ReadinessController' to featureGate.enabled in managed-upgrade-operator-config ConfigMap and restart the operator")
 }
 
 // cleanupExpiredChecks deletes readiness checks that have passed their TTL.
@@ -474,21 +429,38 @@ func (s *ReadinessHTTPServer) findCR(ctx context.Context, requestID string) (*up
 	return &list.Items[0], nil
 }
 
-// crNamePrefix returns a sanitized GenerateName value from the caller-supplied prefix.
-// Only lowercase alphanumeric characters and interior hyphens are kept; leading/trailing
-// hyphens are stripped. Falls back to "upgradediags" if the result is empty.
-func crNamePrefix(raw string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(raw) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			b.WriteRune(r)
+// crNamePrefix returns a sanitized GenerateName value.
+// If raw is a valid non-empty caller-supplied prefix it is used as-is.
+// Otherwise a descriptive prefix is derived from version and platform:
+//
+//	version="4.22.22", platform="OSD" → "urc-4-22-22-osd-"
+func crNamePrefix(raw, version, platform string) string {
+	sanitize := func(s string) string {
+		s = strings.ToLower(s)
+		var b strings.Builder
+		for _, r := range s {
+			switch {
+			case r == '.' || r == '_':
+				b.WriteRune('-')
+			case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-':
+				b.WriteRune(r)
+			}
 		}
+		return strings.Trim(b.String(), "-")
 	}
-	prefix := strings.Trim(b.String(), "-")
-	if prefix == "" {
-		prefix = "readiness"
+	if p := sanitize(raw); p != "" {
+		return p + "-"
 	}
-	return prefix + "-"
+	ver := sanitize(version)
+	plat := sanitize(platform)
+	switch {
+	case ver != "" && plat != "":
+		return fmt.Sprintf("urc-%s-%s-", ver, plat)
+	case ver != "":
+		return fmt.Sprintf("urc-%s-", ver)
+	default:
+		return "urc-"
+	}
 }
 
 func (s *ReadinessHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradeReadinessCheck {
@@ -501,7 +473,7 @@ func (s *ReadinessHTTPServer) buildInternalCR(requestID string, req CheckRequest
 	}
 	return &upgradev1alpha1.UpgradeReadinessCheck{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: crNamePrefix(req.NamePrefix),
+			GenerateName: crNamePrefix(req.NamePrefix, req.TargetVersion, req.Platform),
 			Namespace:    s.Namespace,
 			Labels:       map[string]string{requestIDLabel: requestID},
 			Annotations:  annotations,

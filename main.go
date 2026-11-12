@@ -376,7 +376,6 @@ func runReadiness() {
 		MetricsClientBuilder: metrics.NewBuilder(),
 		CvClientBuilder:      cv.NewBuilder(),
 		Machinery:            machinery.NewMachinery(),
-		ConfigManagerBuilder: configmanager.NewBuilder(),
 		DvoClientBuilder:     dvo.NewBuilder(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create UpgradeReadinessCheck controller")
