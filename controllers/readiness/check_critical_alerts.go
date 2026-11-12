@@ -3,18 +3,24 @@ package readiness
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
-	"github.com/openshift/managed-upgrade-operator/pkg/metrics"
 	"github.com/openshift/managed-upgrade-operator/pkg/upgraders"
 )
 
 const (
-	descCriticalAlerts         = "Checks for critical alerts that would block an upgrade, using MUO's default alert rules. Queries Prometheus for firing critical alerts."
-	descCriticalAlertsExtended = "Detailed critical alert analysis without ignore filters. Lists all firing critical alerts in core OpenShift namespaces (openshift-*, kube-*, default)."
+	descCriticalAlerts = "Runs the same critical alert gate MUO uses before starting an upgrade. " +
+		"Reports whether any blocking critical alerts are currently firing. " +
+		"See CriticalAlertsExtended for the complete list of all firing critical alerts with namespace context."
+
+	descCriticalAlertsExtended = "Comprehensive scan for all critical alerts currently firing across core " +
+		"OpenShift namespaces (openshift-*, kube-*, default). The findings list every alert found at time of " +
+		"check — it is not a fixed allowlist. A short findings list means few alerts are firing, not that " +
+		"only those specific alerts were checked. This check does not apply MUO's internal alert suppression rules."
 )
 
 type criticalAlertsCheck struct{}
@@ -36,7 +42,6 @@ func (c *criticalAlertsCheck) Run(ctx context.Context, deps CheckDependencies, l
 			Action: "Contact Red Hat support if Prometheus metrics cannot be queried.",
 		}
 	}
-	findings := []string{"Uses MUO's upgrade validation logic (upgraders.CriticalAlertsDefault)"}
 	fakeUC := createFakeUpgradeConfig("4.15.0")
 	passed, err := upgraders.CriticalAlertsDefault(metricsClient, fakeUC, logger, "")
 	if err != nil || !passed {
@@ -45,16 +50,17 @@ func (c *criticalAlertsCheck) Run(ctx context.Context, deps CheckDependencies, l
 			msg = err.Error()
 		}
 		return CheckOutput{
-			Result:   upgradev1alpha1.CheckFailed,
-			Summary:  fmt.Sprintf("Upgrade validation failed: %s", msg),
-			Findings: findings,
-			Action:   "Resolve the firing critical alerts before attempting an upgrade.",
+			Result:  upgradev1alpha1.CheckFailed,
+			Summary: fmt.Sprintf("Upgrade validation failed: %s", msg),
+			Findings: []string{
+				"Review CriticalAlertsExtended for the full list of firing alerts with namespace context.",
+			},
+			Action: "Resolve the firing critical alerts before attempting an upgrade.",
 		}
 	}
 	return CheckOutput{
-		Result:   upgradev1alpha1.CheckPassed,
-		Summary:  "Upgrade validation passed: no critical alerts firing",
-		Findings: findings,
+		Result:  upgradev1alpha1.CheckPassed,
+		Summary: "Upgrade validation passed: no critical alerts firing",
 	}
 }
 
@@ -68,20 +74,25 @@ func (c *criticalAlertsExtendedCheck) DefaultOwner() upgradev1alpha1.CheckOwner 
 }
 
 func (c *criticalAlertsExtendedCheck) Run(ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) CheckOutput {
-	var alerts *metrics.AlertResponse
+	// QueryAlerts calls /api/v1/alerts (not PromQL) so we get alert annotations
+	// (description, summary) alongside metric labels.
+	type alertEntry struct {
+		labels      map[string]string
+		annotations map[string]string
+	}
+	var matched []alertEntry
 	var err error
-	query := `ALERTS{alertstate="firing",severity="critical",namespace=~"^openshift.*|^kube-.*|^default$"}`
 
 	for attempt := 1; attempt <= prometheusRetries; attempt++ {
-		var metricsClient metrics.Metrics
-		metricsClient, err = deps.MetricsClientBuilder.NewClient(deps.Client)
-		if err != nil {
+		metricsClient, clientErr := deps.MetricsClientBuilder.NewClient(deps.Client)
+		if clientErr != nil {
+			err = clientErr
 			if attempt < prometheusRetries {
 				select {
 				case <-ctx.Done():
 					return CheckOutput{
 						Result: upgradev1alpha1.CheckResultError,
-						Error:  fmt.Sprintf("timed out waiting for metrics client: %v", err),
+						Error:  fmt.Sprintf("timed out waiting for metrics client: %v", clientErr),
 						Owner:  upgradev1alpha1.OwnerServiceTeam,
 						Action: "Contact Red Hat support if Prometheus cannot be reached.",
 					}
@@ -90,14 +101,15 @@ func (c *criticalAlertsExtendedCheck) Run(ctx context.Context, deps CheckDepende
 			}
 			continue
 		}
-		alerts, err = metricsClient.Query(query)
-		if err != nil {
+		infos, queryErr := metricsClient.QueryAlerts()
+		if queryErr != nil {
+			err = queryErr
 			if attempt < prometheusRetries {
 				select {
 				case <-ctx.Done():
 					return CheckOutput{
 						Result: upgradev1alpha1.CheckResultError,
-						Error:  fmt.Sprintf("timed out querying Prometheus: %v", err),
+						Error:  fmt.Sprintf("timed out querying Prometheus alerts: %v", queryErr),
 						Owner:  upgradev1alpha1.OwnerServiceTeam,
 						Action: "Contact Red Hat support if Prometheus cannot be reached.",
 					}
@@ -106,36 +118,81 @@ func (c *criticalAlertsExtendedCheck) Run(ctx context.Context, deps CheckDepende
 			}
 			continue
 		}
+		for _, a := range infos {
+			if a.State != "firing" || a.Labels["severity"] != "critical" {
+				continue
+			}
+			if !isCoreNamespace(a.Labels["namespace"]) {
+				continue
+			}
+			matched = append(matched, alertEntry{labels: a.Labels, annotations: a.Annotations})
+		}
+		err = nil
 		break
 	}
 	if err != nil {
 		return CheckOutput{
 			Result: upgradev1alpha1.CheckResultError,
-			Error:  fmt.Sprintf("unable to query critical alerts after %d attempts: %v", prometheusRetries, err),
+			Error:  fmt.Sprintf("unable to query Prometheus alerts after %d attempts: %v", prometheusRetries, err),
 			Owner:  upgradev1alpha1.OwnerServiceTeam,
 			Action: "Contact Red Hat support if Prometheus metrics cannot be queried.",
 		}
 	}
-	if len(alerts.Data.Result) == 0 {
+	if len(matched) == 0 {
 		return CheckOutput{
-			Result:   upgradev1alpha1.CheckPassed,
-			Summary:  "No critical alerts firing in core namespaces",
-			Findings: []string{"No firing critical alerts in openshift-*, kube-*, or default namespaces"},
+			Result:  upgradev1alpha1.CheckPassed,
+			Summary: "No critical alerts firing in scanned namespaces (openshift-*, kube-*, default)",
 		}
 	}
-	seen := make(map[string]bool)
-	var names []string
-	for _, a := range alerts.Data.Result {
-		name := a.Metric["alertname"]
-		if !seen[name] {
-			seen[name] = true
-			names = append(names, name)
+
+	type alertKey struct{ name, ns string }
+	seen := make(map[alertKey]bool)
+	uniqueNames := make(map[string]bool)
+	var findings []string
+
+	for _, a := range matched {
+		name := a.labels["alertname"]
+		ns := a.labels["namespace"]
+		key := alertKey{name, ns}
+		if seen[key] {
+			continue
 		}
+		seen[key] = true
+		uniqueNames[name] = true
+
+		// Build a human-readable finding: alertname — description (from annotations)
+		// Fall back to summary if description is absent, then just namespace.
+		finding := name
+		if ns != "" {
+			finding += fmt.Sprintf(" (namespace: %s)", ns)
+		}
+		if desc := a.annotations["description"]; desc != "" {
+			finding += " — " + desc
+		} else if summary := a.annotations["summary"]; summary != "" {
+			finding += " — " + summary
+		}
+		findings = append(findings, finding)
 	}
+	sort.Strings(findings)
+
+	uniqueNameList := make([]string, 0, len(uniqueNames))
+	for n := range uniqueNames {
+		uniqueNameList = append(uniqueNameList, n)
+	}
+	sort.Strings(uniqueNameList)
+
 	return CheckOutput{
 		Result:   upgradev1alpha1.CheckFailed,
-		Summary:  fmt.Sprintf("%d critical alert(s) firing: %s", len(names), strings.Join(names, ", ")),
-		Findings: names,
-		Action:   "Investigate and resolve the listed critical alerts before upgrading.",
+		Summary:  fmt.Sprintf("%d critical alert(s) firing: %s", len(uniqueNameList), strings.Join(uniqueNameList, ", ")),
+		Findings: findings,
+		Action:   "Investigate and resolve the listed critical alerts. See OpenShift Console → Observe → Alerting for full alert details and runbook links.",
 	}
+}
+
+// isCoreNamespace returns true for namespaces scanned by the critical alerts check
+// (mirrors the PromQL filter: namespace=~"^openshift.*|^kube-.*|^default$").
+func isCoreNamespace(ns string) bool {
+	return strings.HasPrefix(ns, "openshift") ||
+		strings.HasPrefix(ns, "kube-") ||
+		ns == "default"
 }

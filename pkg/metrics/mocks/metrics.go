@@ -450,3 +450,18 @@ func (mr *MockMetricsMockRecorder) UpdatemetricUpgradeNotificationSucceeded(arg0
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatemetricUpgradeNotificationSucceeded", reflect.TypeOf((*MockMetrics)(nil).UpdatemetricUpgradeNotificationSucceeded), arg0, arg1)
 }
+
+// QueryAlerts mocks base method.
+func (m *MockMetrics) QueryAlerts() ([]metrics.PrometheusAlertInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryAlerts")
+	ret0, _ := ret[0].([]metrics.PrometheusAlertInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryAlerts indicates an expected call of QueryAlerts.
+func (mr *MockMetricsMockRecorder) QueryAlerts() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryAlerts", reflect.TypeOf((*MockMetrics)(nil).QueryAlerts))
+}

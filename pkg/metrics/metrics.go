@@ -116,6 +116,7 @@ type Metrics interface {
 	IsMetricNotificationEventSentSet(upgradeConfigName string, event string, version string) (bool, error)
 	IsClusterVersionAtVersion(version string) (bool, error)
 	Query(query string) (*AlertResponse, error)
+	QueryAlerts() ([]PrometheusAlertInfo, error)
 }
 
 //go:generate mockgen -destination=mocks/metrics_builder.go -package=mocks github.com/openshift/managed-upgrade-operator/pkg/metrics MetricsBuilder
@@ -703,6 +704,29 @@ func (c *Counter) Query(query string) (*AlertResponse, error) {
 	return result, nil
 }
 
+// QueryAlerts calls /api/v1/alerts (not PromQL) and returns all firing alerts
+// including their annotations (description, summary, runbook_url, etc.).
+func (c *Counter) QueryAlerts() ([]PrometheusAlertInfo, error) {
+	req, err := http.NewRequest("GET", "https://"+c.promTarget+"/api/v1/alerts", nil)
+	if err != nil {
+		return nil, fmt.Errorf("could not query prometheus alerts: %s", err)
+	}
+	resp, err := c.promClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading prometheus alerts: %s", err)
+	}
+	result := &prometheusAlertsResponse{}
+	if err := json.Unmarshal(body, result); err != nil {
+		return nil, err
+	}
+	return result.Data.Alerts, nil
+}
+
 func prometheusToken(c client.Client) (*string, error) {
 	sl := &corev1.SecretList{}
 	err := c.List(context.TODO(), sl, client.InNamespace(MonitoringNS))
@@ -757,4 +781,21 @@ type AlertData struct {
 type AlertResult struct {
 	Metric map[string]string `json:"metric"`
 	Value  []interface{}     `json:"value"`
+}
+
+// PrometheusAlertInfo is a firing alert from /api/v1/alerts including annotations.
+// Unlike PromQL ALERTS{} metric results, this includes human-readable annotation
+// fields such as "description" and "summary" that are defined in the alerting rule.
+type PrometheusAlertInfo struct {
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+	State       string            `json:"state"`
+	ActiveAt    string            `json:"activeAt,omitempty"`
+}
+
+type prometheusAlertsResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		Alerts []PrometheusAlertInfo `json:"alerts"`
+	} `json:"data"`
 }
