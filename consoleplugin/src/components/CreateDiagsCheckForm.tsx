@@ -9,6 +9,7 @@ import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@open
 // MUO's HTTP service creates the CR using the operator's service account,
 // bypassing the sre-regular-user-validation admission webhook.
 const UPGRADEDIAGS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-diags';
+const MUO_NS = 'openshift-managed-upgrade-operator';
 
 const T = {
   danger:      'var(--pf-t--global--color--status--danger--default)',
@@ -32,6 +33,14 @@ interface ClusterVersion extends K8sResourceCommon {
     availableUpdates?: Array<{ version: string }>;
     conditionalUpdates?: Array<{ release: { version: string }; risks?: Array<{ name: string }> }>;
   };
+}
+
+interface UpgradeConfig extends K8sResourceCommon {
+  spec?: { type?: string };
+}
+
+interface Infrastructure extends K8sResourceCommon {
+  status?: { platformStatus?: { type?: string } };
 }
 
 export interface InitialValues {
@@ -66,6 +75,24 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
     name: 'version',
   });
 
+  // Detect cluster platform from existing UpgradeConfig (authoritative) or Infrastructure (fallback).
+  const [upgradeConfigs] = useK8sWatchResource<UpgradeConfig[]>({
+    groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradeConfig' },
+    namespace: MUO_NS,
+    isList: true,
+  });
+  const [infra] = useK8sWatchResource<Infrastructure>({
+    groupVersionKind: { group: 'config.openshift.io', version: 'v1', kind: 'Infrastructure' },
+    name: 'cluster',
+  });
+
+  const ucPlatform = Array.isArray(upgradeConfigs) && upgradeConfigs.length > 0
+    ? (upgradeConfigs[0].spec?.type as 'OSD' | 'ARO' | undefined)
+    : undefined;
+  const infraType = infra?.status?.platformStatus?.type;
+  const infraPlatform = infraType === 'Azure' ? 'ARO' as const : infraType === 'AWS' ? 'OSD' as const : undefined;
+  const detectedPlatform = ucPlatform ?? infraPlatform;
+
   const currentVersion = cv?.status?.desired?.version
     ?? cv?.status?.history?.find(h => h.state === 'Completed')?.version
     ?? '';
@@ -85,10 +112,11 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
       setDescription(initialValues.description);
       setUseCustomVersion(true);
       setUseCustomChannel(true);
-    } else if (currentChannel && !channel) {
-      setChannel(currentChannel);
+    } else {
+      if (currentChannel && !channel) setChannel(currentChannel);
+      if (detectedPlatform) setPlatform(detectedPlatform);
     }
-  }, [isOpen, initialValues]);
+  }, [isOpen, initialValues, detectedPlatform]);
 
   const versionError = version && !SEMVER_RE.test(version) ? 'Version must be in X.Y.Z format (e.g. 4.22.22)' : '';
   const channelError = channel && !CHANNEL_RE.test(channel) ? 'Channel must be in {type}-X.Y format (e.g. stable-4.22)' : '';
@@ -318,10 +346,23 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
 
         {/* ── Platform ── */}
         <FormGroup label="Platform" isRequired fieldId="platform">
-          <FormSelect id="platform" value={platform} onChange={(_e, v) => setPlatform(v as 'OSD' | 'ARO')}>
+          <FormSelect
+            id="platform"
+            value={platform}
+            onChange={detectedPlatform ? undefined : ((_e, v) => setPlatform(v as 'OSD' | 'ARO'))}
+            isDisabled={!!detectedPlatform}
+            aria-label="Platform type"
+          >
             <FormSelectOption value="OSD" label="OpenShift Dedicated (OSD)" />
             <FormSelectOption value="ARO" label="Azure Red Hat OpenShift (ARO)" />
           </FormSelect>
+          {detectedPlatform && (
+            <FormHelperText>
+              <HelperText><HelperTextItem>
+                Detected from cluster configuration
+              </HelperTextItem></HelperText>
+            </FormHelperText>
+          )}
         </FormGroup>
 
         {/* ── Description (optional) ── */}
