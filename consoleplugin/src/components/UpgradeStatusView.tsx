@@ -8,6 +8,24 @@ const POLL_INTERVAL_MS = 30_000;
 
 // ---- Types (mirror upgrade_status.go response) ----------------------------
 
+interface DrainBlocker {
+  podName: string;
+  podNamespace: string;
+  pdbName: string;
+  owner?: string;
+  disruptionsAllowed: number;
+  desiredHealthy: number;
+  currentHealthy: number;
+  violation?: string;
+}
+
+interface ProviderError {
+  source: string;
+  reason?: string;
+  message: string;
+  since?: string;
+}
+
 interface NodeStatus {
   name: string;
   phase: string;
@@ -15,6 +33,8 @@ interface NodeStatus {
   desiredConfig?: string;
   phaseSince?: string;
   elapsedSeconds?: number;
+  drainBlockers?: DrainBlocker[];
+  providerErrors?: ProviderError[];
 }
 
 interface MachinePoolStatus {
@@ -290,43 +310,158 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
       {/* Node table */}
       {expanded && pool.nodes && pool.nodes.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <colgroup>
+            <col style={{ width: '28%' }} />
+            <col style={{ width: 90 }} />
+            <col style={{ width: 90 }} />
+            <col style={{ width: 90 }} />
+            <col />
+          </colgroup>
           <thead>
             <tr>
               <th style={th}>Node</th>
               <th style={th}>Phase</th>
               <th style={th}>Config</th>
-              <th style={th}>Phase Elapsed</th>
+              <th style={th}>Elapsed</th>
+              <th style={th}>Issues</th>
             </tr>
           </thead>
           <tbody>
             {pool.nodes.map(node => {
               const nc = phaseColor(node.phase);
               const configMatch = node.currentConfig === node.desiredConfig;
+              const hasBlockers = (node.drainBlockers?.length ?? 0) > 0;
+              const hasProviderErrors = (node.providerErrors?.length ?? 0) > 0;
+              const hasIssues = hasBlockers || hasProviderErrors;
+              const tdBase: React.CSSProperties = {
+                padding: '7px 10px',
+                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                verticalAlign: 'top',
+              };
               return (
-                <tr key={node.name}>
-                  <td style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', fontFamily: 'monospace' }}>
-                    {node.name}
-                  </td>
-                  <td style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <PhaseBadge phase={node.phase} />
-                  </td>
-                  <td style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    {configMatch
-                      ? <span style={{ color: '#5ba352' }}>✓ current</span>
-                      : <span style={{ color: nc, fontSize: 11, fontFamily: 'monospace' }}>
-                          {(node.desiredConfig ?? '').slice(-8)}
+                <React.Fragment key={node.name}>
+                  <tr style={{ borderLeft: hasIssues ? `3px solid ${nc}` : '3px solid transparent' }}>
+                    <td style={{ ...tdBase, fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                      {node.name}
+                    </td>
+                    <td style={tdBase}><PhaseBadge phase={node.phase} /></td>
+                    <td style={tdBase}>
+                      {configMatch
+                        ? <span style={{ color: '#5ba352' }}>✓ current</span>
+                        : <span style={{ color: nc, fontFamily: 'monospace', fontSize: 11 }}>
+                            →{(node.desiredConfig ?? '').slice(-8)}
+                          </span>
+                      }
+                    </td>
+                    <td style={{ ...tdBase, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                      {fmtElapsed(node.elapsedSeconds)}
+                    </td>
+                    <td style={tdBase}>
+                      {hasBlockers && (
+                        <span style={{ color: '#c9190b', fontWeight: 600 }}>
+                          {node.drainBlockers!.length} PDB blocker{node.drainBlockers!.length > 1 ? 's' : ''}
                         </span>
-                    }
-                  </td>
-                  <td style={{ padding: '6px 10px', borderBottom: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>
-                    {fmtElapsed(node.elapsedSeconds)}
-                  </td>
-                </tr>
+                      )}
+                      {hasProviderErrors && (
+                        <span style={{ color: '#c95f0b', fontWeight: 600, marginLeft: hasBlockers ? 8 : 0 }}>
+                          {node.providerErrors!.length} provider error{node.providerErrors!.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {!hasIssues && <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>}
+                    </td>
+                  </tr>
+
+                  {/* PDB drain blockers — one sub-row per blocker */}
+                  {hasBlockers && node.drainBlockers!.map((db, i) => (
+                    <tr key={`db-${i}`} style={{ background: 'rgba(201,25,11,0.06)' }}>
+                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11 }}>
+                        <span style={{ color: '#c9190b', fontWeight: 700 }}>PDB block: </span>
+                        <span style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>
+                          {db.podNamespace}/{db.pdbName}
+                        </span>
+                        {db.owner && (
+                          <span style={{ color: 'rgba(255,255,255,0.45)', marginLeft: 8 }}>owner: {db.owner}</span>
+                        )}
+                        <span style={{ color: 'rgba(255,255,255,0.45)', marginLeft: 8 }}>
+                          disruptions allowed: {db.disruptionsAllowed} · healthy: {db.currentHealthy}/{db.desiredHealthy}
+                        </span>
+                        {db.violation && (
+                          <span style={{ marginLeft: 8, color: '#c9190b', fontFamily: 'monospace' }}>[{db.violation}]</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Provider / cloud errors — one sub-row per error */}
+                  {hasProviderErrors && node.providerErrors!.map((pe, i) => (
+                    <tr key={`pe-${i}`} style={{ background: 'rgba(201,95,11,0.06)' }}>
+                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11 }}>
+                        <span style={{ color: '#c95f0b', fontWeight: 700 }}>
+                          {pe.source}{pe.reason ? ` / ${pe.reason}` : ''}: </span>
+                        <span style={{ color: 'rgba(255,255,255,0.7)' }}>{pe.message}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
               );
             })}
           </tbody>
         </table>
       )}
+    </div>
+  );
+};
+
+// ---- Collapsible operators card --------------------------------------------
+
+const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const color = phaseColor(ops.phase);
+
+  const countPill = (n: number, label: string, c: string) => n > 0 ? (
+    <span key={label} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '1px 8px', borderRadius: 20,
+      background: `${c}22`, color: c, border: `1px solid ${c}55`,
+      fontWeight: 600, fontSize: 11,
+    }}>
+      {n} {label}
+    </span>
+  ) : null;
+
+  return (
+    <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, overflow: 'hidden', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+      {/* Clickable header row */}
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+          padding: '10px 16px',
+          background: expanded ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)',
+          borderBottom: expanded ? '1px solid rgba(255,255,255,0.1)' : undefined,
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'rgba(255,255,255,0.5)' }}>
+          Cluster Operators
+        </span>
+        <PhaseBadge phase={ops.phase} />
+        <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {countPill(ops.available,    'available',   '#5ba352')}
+          {countPill(ops.progressing,  'progressing', '#73bcf7')}
+          {countPill(ops.degraded,     'degraded',    '#c9190b')}
+        </span>
+        {ops.elapsedSeconds ? (
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginLeft: 4 }}>
+            {fmtElapsed(ops.elapsedSeconds)} elapsed
+          </span>
+        ) : null}
+        <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>
+          {ops.total} total · {expanded ? 'collapse ▲' : 'expand ▼'}
+        </span>
+      </div>
+
+      {expanded && ops.operators && <OperatorsTable ops={ops} />}
     </div>
   );
 };
@@ -501,21 +636,8 @@ export const UpgradeStatusView: React.FC = () => {
             </Alert>
           )}
 
-          {/* ---- Cluster Operators ---- */}
-          <div style={cardStyle}>
-            <SectionHeader
-              title="Cluster Operators"
-              badge={<PhaseBadge phase={snapshot.clusterOperators.phase} />}
-              meta={`${snapshot.clusterOperators.available}/${snapshot.clusterOperators.total} available` +
-                (snapshot.clusterOperators.progressing > 0 ? ` · ${snapshot.clusterOperators.progressing} progressing` : '') +
-                (snapshot.clusterOperators.degraded > 0 ? ` · ${snapshot.clusterOperators.degraded} degraded` : '') +
-                (snapshot.clusterOperators.elapsedSeconds ? ` · ${fmtElapsed(snapshot.clusterOperators.elapsedSeconds)} elapsed` : '')
-              }
-            />
-            {snapshot.clusterOperators.operators && (
-              <OperatorsTable ops={snapshot.clusterOperators} />
-            )}
-          </div>
+          {/* ---- Cluster Operators (collapsed by default) ---- */}
+          <OperatorsCard ops={snapshot.clusterOperators} />
 
           {/* ---- Machine Pools ---- */}
           {snapshot.machinePools && snapshot.machinePools.length > 0 && (

@@ -9,6 +9,7 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -90,6 +91,31 @@ type MachinePoolStatus struct {
 	Nodes          []NodeStatus `json:"nodes,omitempty"`
 }
 
+// DrainBlocker describes a PDB that is actively preventing a node drain.
+type DrainBlocker struct {
+	// PodName is the pod on the draining node that the PDB protects.
+	PodName      string `json:"podName"`
+	PodNamespace string `json:"podNamespace"`
+	PDBName      string `json:"pdbName"`
+	// Owner is the controller owning the pod, e.g. "Deployment/my-app" or "StatefulSet/my-db".
+	Owner              string `json:"owner,omitempty"`
+	DisruptionsAllowed int32  `json:"disruptionsAllowed"`
+	DesiredHealthy     int32  `json:"desiredHealthy"`
+	CurrentHealthy     int32  `json:"currentHealthy"`
+	// Violation summarises why the PDB blocks drains, e.g. "MaxUnavailable=0".
+	Violation string `json:"violation,omitempty"`
+}
+
+// ProviderError is an infrastructure-layer error surfaced from Machine objects
+// or cloud-provider node events (e.g. IAM, capacity, quota, network errors).
+type ProviderError struct {
+	// Source is where the error was found: "Machine" or "NodeEvent".
+	Source  string       `json:"source"`
+	Reason  string       `json:"reason,omitempty"`
+	Message string       `json:"message"`
+	Since   *metav1.Time `json:"since,omitempty"`
+}
+
 type NodeStatus struct {
 	Name string `json:"name"`
 	// Phase: done, working, rebooting, degraded, draining, unknown.
@@ -97,8 +123,14 @@ type NodeStatus struct {
 	CurrentConfig string       `json:"currentConfig,omitempty"`
 	DesiredConfig string       `json:"desiredConfig,omitempty"`
 	// PhaseSince is when the node entered its current phase (from MachineConfig state annotation change).
-	PhaseSince     *metav1.Time `json:"phaseSince,omitempty"`
-	ElapsedSeconds int64        `json:"elapsedSeconds,omitempty"`
+	PhaseSince     *metav1.Time  `json:"phaseSince,omitempty"`
+	ElapsedSeconds int64         `json:"elapsedSeconds,omitempty"`
+	// DrainBlockers lists PDBs actively preventing this node's drain.
+	// Only populated when phase is "draining" or "working".
+	DrainBlockers  []DrainBlocker  `json:"drainBlockers,omitempty"`
+	// ProviderErrors surfaces AWS/cloud-layer errors from Machine objects
+	// (IAM failures, capacity issues, instance state errors, etc.).
+	ProviderErrors []ProviderError `json:"providerErrors,omitempty"`
 }
 
 type UpgradeBlocker struct {
@@ -211,6 +243,17 @@ func (s *UpgradeDiagsHTTPServer) buildStatusSnapshot(ctx context.Context) (*Upgr
 	nodeList := &corev1.NodeList{}
 	_ = s.Client.List(ctx, nodeList)
 
+	// Pods (all namespaces) for drain-blocker mapping — optional.
+	podList := &corev1.PodList{}
+	_ = s.Client.List(ctx, podList)
+
+	// PodDisruptionBudgets (all namespaces) — optional.
+	pdbList := &policyv1.PodDisruptionBudgetList{}
+	_ = s.Client.List(ctx, pdbList)
+
+	// Machine objects (OpenShift Machine API) for cloud-provider errors — optional.
+	machines, _ := s.listMachines(ctx)
+
 	snap := &UpgradeStatusSnapshot{}
 	snap.CurrentVersion = currentVersion(cv)
 	snap.TargetVersion = targetVersion(cv)
@@ -240,7 +283,7 @@ func (s *UpgradeDiagsHTTPServer) buildStatusSnapshot(ctx context.Context) (*Upgr
 	// Build sub-statuses.
 	snap.ControlPlane = buildControlPlaneStatus(cv, now)
 	snap.Operators = buildOperatorsStatus(coList, now)
-	snap.MachinePools = buildMachinePoolStatuses(mcps, nodeList, now)
+	snap.MachinePools = buildMachinePoolStatuses(mcps, nodeList, podList, pdbList, machines, now)
 
 	// Determine top-level phase.
 	snap.Phase = detectUpgradePhase(cv, snap.ControlPlane, snap.Operators, snap.MachinePools)
@@ -421,7 +464,7 @@ func (s *UpgradeDiagsHTTPServer) listMCPs(ctx context.Context) ([]unstructured.U
 	return list.Items, nil
 }
 
-func buildMachinePoolStatuses(mcps []unstructured.Unstructured, nodeList *corev1.NodeList, now time.Time) []MachinePoolStatus {
+func buildMachinePoolStatuses(mcps []unstructured.Unstructured, nodeList *corev1.NodeList, podList *corev1.PodList, pdbList *policyv1.PodDisruptionBudgetList, machines []unstructured.Unstructured, now time.Time) []MachinePoolStatus {
 	// Index nodes by pool membership (role labels).
 	nodesByPool := make(map[string][]corev1.Node)
 	for _, node := range nodeList.Items {
@@ -432,6 +475,17 @@ func buildMachinePoolStatuses(mcps []unstructured.Unstructured, nodeList *corev1
 			}
 		}
 	}
+
+	// Index pods by node name for drain-blocker lookup.
+	podsByNode := make(map[string][]corev1.Pod, len(nodeList.Items))
+	for _, pod := range podList.Items {
+		if pod.Spec.NodeName != "" {
+			podsByNode[pod.Spec.NodeName] = append(podsByNode[pod.Spec.NodeName], pod)
+		}
+	}
+
+	// Index machine provider errors by node name.
+	machineErrsByNode := buildMachineErrorIndex(machines)
 
 	pools := make([]MachinePoolStatus, 0, len(mcps))
 	for _, mcp := range mcps {
@@ -488,7 +542,7 @@ func buildMachinePoolStatuses(mcps []unstructured.Unstructured, nodeList *corev1
 
 		// Per-node details from the node list for this pool's role.
 		for _, node := range nodesByPool[name] {
-			ps.Nodes = append(ps.Nodes, buildNodeStatus(node, now))
+			ps.Nodes = append(ps.Nodes, buildNodeStatus(node, podsByNode[node.Name], pdbList.Items, machineErrsByNode[node.Name], now))
 		}
 
 		pools = append(pools, ps)
@@ -496,15 +550,16 @@ func buildMachinePoolStatuses(mcps []unstructured.Unstructured, nodeList *corev1
 	return pools
 }
 
-func buildNodeStatus(node corev1.Node, now time.Time) NodeStatus {
+func buildNodeStatus(node corev1.Node, nodePods []corev1.Pod, pdbs []policyv1.PodDisruptionBudget, providerErrors []ProviderError, now time.Time) NodeStatus {
 	ann := node.Annotations
 	if ann == nil {
 		ann = map[string]string{}
 	}
 	ns := NodeStatus{
-		Name:          node.Name,
-		CurrentConfig: ann["machineconfiguration.openshift.io/currentConfig"],
-		DesiredConfig: ann["machineconfiguration.openshift.io/desiredConfig"],
+		Name:           node.Name,
+		CurrentConfig:  ann["machineconfiguration.openshift.io/currentConfig"],
+		DesiredConfig:  ann["machineconfiguration.openshift.io/desiredConfig"],
+		ProviderErrors: providerErrors,
 	}
 
 	mcState := strings.ToLower(ann["machineconfiguration.openshift.io/state"])
@@ -532,6 +587,11 @@ func buildNodeStatus(node corev1.Node, now time.Time) NodeStatus {
 			ns.ElapsedSeconds = int64(now.Sub(cond.LastTransitionTime.Time).Seconds())
 			break
 		}
+	}
+
+	// Find PDBs actively blocking drain for nodes that are draining or stuck working.
+	if ns.Phase == "draining" || ns.Phase == "working" {
+		ns.DrainBlockers = findDrainBlockers(node, nodePods, pdbs)
 	}
 
 	return ns
@@ -638,7 +698,7 @@ func collectBlockers(cv *configv1.ClusterVersion, ops OperatorsStatus, pools []M
 		}
 	}
 
-	// Degraded MCPs or stalled nodes.
+	// Degraded MCPs, stalled nodes, and active drain blockers.
 	for _, pool := range pools {
 		if pool.Degraded > 0 {
 			blockers = append(blockers, UpgradeBlocker{
@@ -660,10 +720,174 @@ func collectBlockers(cv *configv1.ClusterVersion, ops OperatorsStatus, pools []M
 					ElapsedSeconds: elapsed,
 				})
 			}
+			// Surface PDB drain blockers at the top level for fast visibility.
+			for _, db := range node.DrainBlockers {
+				msg := fmt.Sprintf("PDB %s/%s (owner: %s) blocking drain — DisruptionsAllowed=%d, DesiredHealthy=%d, CurrentHealthy=%d",
+					db.PodNamespace, db.PDBName, db.Owner,
+					db.DisruptionsAllowed, db.DesiredHealthy, db.CurrentHealthy)
+				if db.Violation != "" {
+					msg += fmt.Sprintf(" [%s]", db.Violation)
+				}
+				blockers = append(blockers, UpgradeBlocker{
+					Type:      "pdb-drain-blocker",
+					Component: node.Name,
+					Message:   msg,
+					Since:     node.PhaseSince,
+				})
+			}
+			// Surface machine/cloud errors at the top level.
+			for _, pe := range node.ProviderErrors {
+				blockers = append(blockers, UpgradeBlocker{
+					Type:      "provider-error",
+					Component: node.Name,
+					Message:   pe.Message,
+					Since:     pe.Since,
+				})
+			}
 		}
 	}
 
 	return blockers
+}
+
+// ---- Drain blocker detection -----------------------------------------------
+
+// findDrainBlockers finds PDBs whose DisruptionsAllowed == 0 that cover any
+// running pod on this node, indicating the PDB is actively preventing drain.
+// It reuses podMatchesPDBSelector from check_pdb.go.
+func findDrainBlockers(node corev1.Node, nodePods []corev1.Pod, pdbs []policyv1.PodDisruptionBudget) []DrainBlocker {
+	var blockers []DrainBlocker
+	seenPDB := make(map[string]bool) // namespace/name — one entry per PDB
+
+	for _, pod := range nodePods {
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		for _, pdb := range pdbs {
+			if pdb.Namespace != pod.Namespace {
+				continue
+			}
+			if pdb.Status.DisruptionsAllowed > 0 {
+				continue // PDB is not currently blocking
+			}
+			if !podMatchesPDBSelector(pod, pdb) {
+				continue
+			}
+			key := pdb.Namespace + "/" + pdb.Name
+			if seenPDB[key] {
+				continue
+			}
+			seenPDB[key] = true
+			blockers = append(blockers, DrainBlocker{
+				PodName:            pod.Name,
+				PodNamespace:       pod.Namespace,
+				PDBName:            pdb.Name,
+				Owner:              podOwnerRef(pod),
+				DisruptionsAllowed: pdb.Status.DisruptionsAllowed,
+				DesiredHealthy:     pdb.Status.DesiredHealthy,
+				CurrentHealthy:     pdb.Status.CurrentHealthy,
+				Violation:          pdbViolation(pdb),
+			})
+		}
+	}
+	return blockers
+}
+
+func podOwnerRef(pod corev1.Pod) string {
+	for _, ref := range pod.OwnerReferences {
+		if ref.Controller != nil && *ref.Controller {
+			return ref.Kind + "/" + ref.Name
+		}
+	}
+	return ""
+}
+
+// ---- Machine provider error detection --------------------------------------
+
+var machineListGVK = schema.GroupVersionKind{
+	Group:   "machine.openshift.io",
+	Version: "v1beta1",
+	Kind:    "MachineList",
+}
+
+func (s *UpgradeDiagsHTTPServer) listMachines(ctx context.Context) ([]unstructured.Unstructured, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(machineListGVK)
+	if err := s.Client.List(ctx, list); err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+// buildMachineErrorIndex returns a map of nodeName → []ProviderError by
+// reading Machine object conditions and providerStatus for AWS/cloud errors.
+func buildMachineErrorIndex(machines []unstructured.Unstructured) map[string][]ProviderError {
+	idx := make(map[string][]ProviderError)
+	for _, m := range machines {
+		nodeName, _, _ := unstructured.NestedString(m.Object, "status", "nodeRef", "name")
+		if nodeName == "" {
+			continue
+		}
+
+		var errs []ProviderError
+
+		// Machine conditions: surface Failed/Terminating with True status.
+		if conds, ok, _ := unstructured.NestedSlice(m.Object, "status", "conditions"); ok {
+			for _, ci := range conds {
+				c, ok := ci.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				ctype, _   := c["type"].(string)
+				cstatus, _ := c["status"].(string)
+				message, _ := c["message"].(string)
+				reason, _  := c["reason"].(string)
+				tsStr, _   := c["lastTransitionTime"].(string)
+
+				if cstatus != "True" || message == "" {
+					continue
+				}
+				// Report explicitly bad conditions and also Ready=False.
+				if ctype != "Failed" && ctype != "Terminating" && !(ctype == "Ready" && cstatus == "False") {
+					continue
+				}
+				t, _ := time.Parse(time.RFC3339, tsStr)
+				mt := metav1.NewTime(t)
+				errs = append(errs, ProviderError{
+					Source:  "Machine",
+					Reason:  reason,
+					Message: fmt.Sprintf("%s: %s", ctype, message),
+					Since:   &mt,
+				})
+			}
+		}
+
+		// providerStatus.instanceState — flag non-running AWS instance states.
+		if ps, ok, _ := unstructured.NestedMap(m.Object, "status", "providerStatus"); ok {
+			if instanceState, ok := ps["instanceState"].(string); ok && instanceState != "" && instanceState != "running" {
+				errs = append(errs, ProviderError{
+					Source:  "Machine",
+					Reason:  "AWSInstanceState",
+					Message: fmt.Sprintf("AWS instance is in state %q (expected running)", instanceState),
+				})
+			}
+		}
+
+		// errorMessage / errorReason at status root — set when machine is terminal.
+		if errMsg, ok, _ := unstructured.NestedString(m.Object, "status", "errorMessage"); ok && errMsg != "" {
+			errReason, _, _ := unstructured.NestedString(m.Object, "status", "errorReason")
+			errs = append(errs, ProviderError{
+				Source:  "Machine",
+				Reason:  errReason,
+				Message: errMsg,
+			})
+		}
+
+		if len(errs) > 0 {
+			idx[nodeName] = errs
+		}
+	}
+	return idx
 }
 
 // ---- Utilities -------------------------------------------------------------
