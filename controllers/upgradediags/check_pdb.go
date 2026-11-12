@@ -185,10 +185,15 @@ func (c *pdbMasterInfraExtendedCheck) Run(ctx context.Context, deps CheckDepende
 	_ = flagged
 	if len(blocking) > 0 {
 		return CheckOutput{
-			Result:   upgradev1alpha1.CheckFailed,
-			Summary:  fmt.Sprintf("Found %d restrictive PDB(s) that could block drain of %d master/infra node(s)", len(blocking), len(masterInfraNames)),
+			// Warning, not Failed: MUO does not gate upgrade start on master/infra
+			// PDB state. A restrictive PDB here will cause the control-plane drain
+			// to stall until PDBForceDrainTimeout, delaying the upgrade rather than
+			// preventing it from starting. Use PodDisruptionBudgets for the
+			// authoritative MUO pre-upgrade gate.
+			Result:   upgradev1alpha1.CheckResultWarning,
+			Summary:  fmt.Sprintf("Found %d restrictive PDB(s) that may delay drain of %d master/infra node(s) during upgrade", len(blocking), len(masterInfraNames)),
 			Findings: findings,
-			Action:   "Adjust the listed PodDisruptionBudgets to allow node drains, or move the workloads off master/infra nodes.",
+			Action:   "Consider adjusting the listed PodDisruptionBudgets to allow node drains, or move workloads off master/infra nodes to avoid upgrade delays.",
 		}
 	}
 	summary := fmt.Sprintf("Checked PDBs against %d master/infra node(s): none blocking", len(masterInfraNames))

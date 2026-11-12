@@ -182,10 +182,14 @@ func (c *criticalAlertsExtendedCheck) Run(ctx context.Context, deps CheckDepende
 	sort.Strings(uniqueNameList)
 
 	return CheckOutput{
-		Result:   upgradev1alpha1.CheckFailed,
-		Summary:  fmt.Sprintf("%d critical alert(s) firing: %s", len(uniqueNameList), strings.Join(uniqueNameList, ", ")),
+		// Warning, not Failed: this extended scan does not apply MUO's internal
+		// alert-suppression rules, so it may surface alerts that MUO would allow
+		// through. Use CriticalAlerts (which wraps upgraders.CriticalAlertsDefault)
+		// for the authoritative upgrade gate.
+		Result:   upgradev1alpha1.CheckResultWarning,
+		Summary:  fmt.Sprintf("%d critical alert(s) firing (advisory — does not apply MUO suppression rules): %s", len(uniqueNameList), strings.Join(uniqueNameList, ", ")),
 		Findings: findings,
-		Action:   "Investigate and resolve the listed critical alerts. See OpenShift Console → Observe → Alerting for full alert details and runbook links.",
+		Action:   "Review the listed critical alerts. Check the CriticalAlerts result for the authoritative MUO upgrade gate. See OpenShift Console → Observe → Alerting for runbook links.",
 	}
 }
 

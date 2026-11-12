@@ -18,7 +18,7 @@ import (
 const (
 	descUpgradeableCondition = "Checks if the ClusterVersion has Upgradeable=False. When CVO sets this condition, it means an operator or in-cluster state is actively blocking y-stream upgrades."
 	descPullSecretValid      = "Validates the cluster pull secret exists and has the required authentication entries for accessing Red Hat container registries."
-	descAdminAcks            = "Validates admin acknowledgments for upgrade gate conditions. For y-stream upgrades, checks the openshift-config/admin-acks ConfigMap for required acknowledgements."
+	descAdminAcks            = "Checks the openshift-config/admin-acks ConfigMap for upgrade gate acknowledgements. If acks are missing for a y-stream upgrade, the UpgradeableCondition check will show the authoritative block. This check provides advisory context and the fix guidance."
 )
 
 type upgradeableConditionCheck struct{}
@@ -113,11 +113,16 @@ func (c *adminAcksCheck) Run(ctx context.Context, deps CheckDependencies, logger
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			if isYStream {
+				// Warning, not Failed: if acks are genuinely required for this
+				// upgrade, CVO will set Upgradeable=False — the UpgradeableCondition
+				// check is the authoritative gate. This check surfaces the missing
+				// acks as advisory context so the admin knows what to fix, without
+				// pressuring them to set an ack just to clear a preflight result.
 				return CheckOutput{
-					Result:   upgradev1alpha1.CheckFailed,
-					Summary:  "admin-acks ConfigMap not found — required for y-stream upgrades",
+					Result:   upgradev1alpha1.CheckResultWarning,
+					Summary:  "admin-acks ConfigMap not found — required acks may not be set for this y-stream upgrade",
 					Findings: []string{"ConfigMap openshift-config/admin-acks does not exist"},
-					Action:   "Acknowledge the required upgrade gates. For ROSA, use `rosa upgrade cluster -c <cluster-id>`.",
+					Action:   "If the UpgradeableCondition check is also failing, acknowledge the required upgrade gates. For ROSA, use `rosa upgrade cluster -c <cluster-id>`.",
 				}
 			}
 			return CheckOutput{
@@ -140,10 +145,10 @@ func (c *adminAcksCheck) Run(ctx context.Context, deps CheckDependencies, logger
 	}
 	if isYStream && len(cm.Data) == 0 {
 		return CheckOutput{
-			Result:   upgradev1alpha1.CheckFailed,
-			Summary:  "admin-acks ConfigMap exists but has no entries",
+			Result:   upgradev1alpha1.CheckResultWarning,
+			Summary:  "admin-acks ConfigMap exists but has no entries — required acks may not be set for this y-stream upgrade",
 			Findings: []string{"ConfigMap openshift-config/admin-acks has no data entries"},
-			Action:   "Acknowledge the required upgrade gates. For ROSA, use `rosa upgrade cluster -c <cluster-id>`.",
+			Action:   "If the UpgradeableCondition check is also failing, acknowledge the required upgrade gates. For ROSA, use `rosa upgrade cluster -c <cluster-id>`.",
 		}
 	}
 	return CheckOutput{

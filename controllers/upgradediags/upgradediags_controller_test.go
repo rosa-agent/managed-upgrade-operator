@@ -195,12 +195,13 @@ var _ = Describe("PreflightController", func() {
 
 				// check calls (all checks enabled)
 				mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv).AnyTimes()
-				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{}, nil).Times(5) // ClusterVersion + UpgradeTarget + UpgradeTargetExtended + UpgradeInFlight + UpgradeableCondition
+				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{}, nil).Times(6) // ClusterVersion + UpgradeTarget + UpgradeTargetExtended + UpgradeInFlight + UpgradeableCondition + AdminAcks
 				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&configv1.ClusterOperatorList{}), gomock.Any()).Return(nil) // extended CO operator list
 				mockCv.EXPECT().HasDegradedOperators().Return(&clusterversion.HasDegradedOperatorsResult{}, nil).Times(2) // baseline CO + extended CO
 				// 6 NewClient calls: baseline CO, baseline CA, extended CA, baseline MCN, baseline NT, baseline PDB
 				mockMetricsBuilder.EXPECT().NewClient(gomock.Any()).Return(mockMetrics, nil).Times(6)
-				mockMetrics.EXPECT().Query(gomock.Any()).Return(&metrics.AlertResponse{}, nil).Times(2) // extended CA + baseline CA
+				mockMetrics.EXPECT().Query(gomock.Any()).Return(&metrics.AlertResponse{}, nil).Times(1)                      // baseline CA uses PromQL Query
+				mockMetrics.EXPECT().QueryAlerts().Return([]metrics.PrometheusAlertInfo{}, nil).Times(1) // extended CA uses QueryAlerts
 				// metric update calls from upgraders functions (baseline CO, CA, MCN, NT, PDB on success)
 				mockMetrics.EXPECT().UpdateMetricHealthcheckSucceeded(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 				mockMetrics.EXPECT().UpdateMetricHealthcheckFailed(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
@@ -539,7 +540,7 @@ var _ = Describe("PreflightController", func() {
 				Expect(output.Result).To(Equal(upgradev1alpha1.CheckPassed))
 			})
 
-			It("returns Failed with alert names when critical alerts are firing", func() {
+			It("returns Warning with alert names when critical alerts are firing (advisory — does not apply MUO suppression)", func() {
 				deps := CheckDependencies{Client: mockClient, MetricsClientBuilder: mockMetricsBuilder}
 				mockMetricsBuilder.EXPECT().NewClient(gomock.Any()).Return(mockMetrics, nil)
 				mockMetrics.EXPECT().QueryAlerts().Return([]metrics.PrometheusAlertInfo{
@@ -548,7 +549,7 @@ var _ = Describe("PreflightController", func() {
 					{State: "firing", Labels: map[string]string{"alertname": "ClusterOperatorDown", "severity": "critical", "namespace": "openshift-monitoring"}},
 				}, nil)
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Findings).To(ConsistOf(ContainSubstring("KubeNodeNotReady"), ContainSubstring("ClusterOperatorDown")))
 			})
 
@@ -927,7 +928,7 @@ var _ = Describe("PreflightController", func() {
 				Expect(output.Result).To(Equal(upgradev1alpha1.CheckPassed))
 			})
 
-			It("returns Failed when a restrictive PDB covers running pods on master nodes", func() {
+			It("returns Warning when a restrictive PDB covers running pods on master nodes (delay risk, not MUO gate)", func() {
 				deps := CheckDependencies{Client: mockClient}
 				zero := intstr.FromInt(0)
 				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&corev1.NodeList{}), gomock.Any()).
@@ -958,7 +959,7 @@ var _ = Describe("PreflightController", func() {
 						return nil
 					})
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Findings).To(ContainElement(ContainSubstring("myapp-pdb")))
 			})
 
@@ -997,7 +998,7 @@ var _ = Describe("PreflightController", func() {
 				Expect(output.Findings).To(ContainElement(ContainSubstring("logging-pdb")))
 			})
 
-			It("returns Failed when a restrictive PDB covers a DaemonSet targeting master nodes", func() {
+			It("returns Warning when a restrictive PDB covers a DaemonSet targeting master nodes (delay risk, not MUO gate)", func() {
 				deps := CheckDependencies{Client: mockClient}
 				zero := intstr.FromInt(0)
 				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&corev1.NodeList{}), gomock.Any()).
@@ -1030,12 +1031,12 @@ var _ = Describe("PreflightController", func() {
 						return nil
 					})
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Findings).To(ContainElement(ContainSubstring("node-exporter-pdb")))
 				Expect(output.Findings).To(ContainElement(ContainSubstring("node-exporter")))
 			})
 
-			It("returns Failed when a restrictive PDB covers a DaemonSet with infra toleration", func() {
+			It("returns Warning when a restrictive PDB covers a DaemonSet with infra toleration (delay risk, not MUO gate)", func() {
 				deps := CheckDependencies{Client: mockClient}
 				zero := intstr.FromInt(0)
 				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&corev1.NodeList{}), gomock.Any()).Return(nil)
@@ -1063,11 +1064,11 @@ var _ = Describe("PreflightController", func() {
 						return nil
 					})
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Findings).To(ContainElement(ContainSubstring("fluentd-pdb")))
 			})
 
-			It("returns Failed when a DaemonSet with wildcard toleration is covered by a restrictive PDB", func() {
+			It("returns Warning when a DaemonSet with wildcard toleration is covered by a restrictive PDB (delay risk, not MUO gate)", func() {
 				deps := CheckDependencies{Client: mockClient}
 				zero := intstr.FromInt(0)
 				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&corev1.NodeList{}), gomock.Any()).Return(nil)
@@ -1095,7 +1096,7 @@ var _ = Describe("PreflightController", func() {
 						return nil
 					})
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Findings).To(ContainElement(ContainSubstring("kube-proxy-pdb")))
 			})
 
@@ -1273,7 +1274,11 @@ var _ = Describe("PreflightController", func() {
 			BeforeEach(func() { check = &adminAcksCheck{} })
 
 			It("returns Passed when admin-acks ConfigMap exists with entries", func() {
-				deps := CheckDependencies{Client: mockClient, DesiredVersion: instance.Spec.Desired.Version}
+				deps := CheckDependencies{Client: mockClient, CvClientBuilder: mockCvBuilder, DesiredVersion: instance.Spec.Desired.Version, DesiredChannel: instance.Spec.Desired.Channel}
+				mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv)
+				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{
+					Status: configv1.ClusterVersionStatus{Desired: configv1.Release{Version: "4.16.14"}},
+				}, nil)
 				mockClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Namespace: "openshift-config", Name: "admin-acks"}, gomock.AssignableToTypeOf(&corev1.ConfigMap{})).
 					DoAndReturn(func(_ context.Context, _ types.NamespacedName, obj interface{}, _ ...interface{}) error {
 						cm := obj.(*corev1.ConfigMap)
@@ -1287,17 +1292,25 @@ var _ = Describe("PreflightController", func() {
 				Expect(output.Findings).To(HaveLen(1))
 			})
 
-			It("returns Failed when admin-acks ConfigMap is missing and target is set", func() {
-				deps := CheckDependencies{Client: mockClient, DesiredVersion: instance.Spec.Desired.Version}
+			It("returns Warning when admin-acks ConfigMap is missing for a y-stream upgrade", func() {
+				deps := CheckDependencies{Client: mockClient, CvClientBuilder: mockCvBuilder, DesiredVersion: "4.17.0", DesiredChannel: "fast-4.17"}
+				mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv)
+				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{
+					Status: configv1.ClusterVersionStatus{Desired: configv1.Release{Version: "4.16.15"}},
+				}, nil)
 				mockClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Namespace: "openshift-config", Name: "admin-acks"}, gomock.AssignableToTypeOf(&corev1.ConfigMap{})).
 					Return(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "admin-acks"))
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Summary).To(ContainSubstring("not found"))
 			})
 
-			It("returns Failed when admin-acks ConfigMap exists but is empty", func() {
-				deps := CheckDependencies{Client: mockClient, DesiredVersion: instance.Spec.Desired.Version}
+			It("returns Warning when admin-acks ConfigMap exists but is empty for a y-stream upgrade", func() {
+				deps := CheckDependencies{Client: mockClient, CvClientBuilder: mockCvBuilder, DesiredVersion: "4.17.0", DesiredChannel: "fast-4.17"}
+				mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv)
+				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{
+					Status: configv1.ClusterVersionStatus{Desired: configv1.Release{Version: "4.16.15"}},
+				}, nil)
 				mockClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Namespace: "openshift-config", Name: "admin-acks"}, gomock.AssignableToTypeOf(&corev1.ConfigMap{})).
 					DoAndReturn(func(_ context.Context, _ types.NamespacedName, obj interface{}, _ ...interface{}) error {
 						cm := obj.(*corev1.ConfigMap)
@@ -1305,12 +1318,16 @@ var _ = Describe("PreflightController", func() {
 						return nil
 					})
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
-				Expect(output.Result).To(Equal(upgradev1alpha1.CheckFailed))
+				Expect(output.Result).To(Equal(upgradev1alpha1.CheckResultWarning))
 				Expect(output.Summary).To(ContainSubstring("no entries"))
 			})
 
 			It("returns Error when ConfigMap read fails with non-NotFound error", func() {
-				deps := CheckDependencies{Client: mockClient, DesiredVersion: instance.Spec.Desired.Version}
+				deps := CheckDependencies{Client: mockClient, CvClientBuilder: mockCvBuilder, DesiredVersion: instance.Spec.Desired.Version, DesiredChannel: instance.Spec.Desired.Channel}
+				mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv)
+				mockCv.EXPECT().GetClusterVersion().Return(&configv1.ClusterVersion{
+					Status: configv1.ClusterVersionStatus{Desired: configv1.Release{Version: "4.16.14"}},
+				}, nil)
 				mockClient.EXPECT().Get(gomock.Any(), types.NamespacedName{Namespace: "openshift-config", Name: "admin-acks"}, gomock.AssignableToTypeOf(&corev1.ConfigMap{})).
 					Return(fmt.Errorf("unexpected API error"))
 				output := check.Run(context.TODO(), deps, log, defaultCheckTimeout)
