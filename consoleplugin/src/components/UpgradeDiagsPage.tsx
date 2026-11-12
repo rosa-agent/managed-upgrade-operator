@@ -3,7 +3,7 @@ import {
   Page, PageSection, PageSectionVariants, Title,
   Button, Spinner, Alert, EmptyState, EmptyStateBody,
 } from '@patternfly/react-core';
-import { TrashIcon, SyncAltIcon, PlusCircleIcon, CaretDownIcon, CaretRightIcon } from '@patternfly/react-icons';
+import { TrashIcon, SyncAltIcon, PlusCircleIcon, CaretDownIcon, CaretRightIcon, InfoCircleIcon } from '@patternfly/react-icons';
 import { useK8sWatchResource, consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import { type UpgradeDiagsCheck } from '../types';
 import { StatusBadge } from './StatusBadge';
@@ -27,6 +27,7 @@ const T = {
   bgSecondary: 'var(--pf-t--global--background--color--secondary--default)',
   bgHover:     'var(--pf-t--global--background--color--secondary--hover)',
   bgActive:    'var(--pf-t--global--background--color--secondary--click)',
+  infoBg:      'var(--pf-t--global--background--color--status--info--default)',
   shadow:      'var(--pf-t--global--shadow--md)',
   radiusPill: 'var(--pf-t--global--border--radius--pill)',
   radiusLg:   'var(--pf-t--global--border--radius--lg)',
@@ -91,6 +92,44 @@ type Tab = 'checks' | 'status';
 const TAB_LABELS: Record<Tab, string> = {
   checks: 'Diagnostics Checks',
   status: 'Upgrade Status',
+};
+
+// Tab description bar: summary always visible; full detail behind an info toggle.
+const TabDescription: React.FC<{ summary: string; detail: string }> = ({ summary, detail }) => {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <div style={{
+      padding: '10px 20px',
+      background: T.bgSecondary,
+      borderBottom: `1px solid ${T.border}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: T.textSubtle }}>{summary}</span>
+        <button
+          onClick={() => setOpen(o => !o)}
+          aria-label={open ? 'Hide details' : 'Show details'}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px',
+            color: open ? T.info : T.textMuted,
+            display: 'inline-flex', alignItems: 'center', lineHeight: 1,
+          }}
+        >
+          <InfoCircleIcon />
+        </button>
+      </div>
+      {open && (
+        <div style={{
+          marginTop: 8, padding: '8px 12px',
+          background: T.infoBg,
+          borderLeft: `3px solid ${T.info}`,
+          borderRadius: T.radiusSm,
+          fontSize: 13, color: T.textSubtle, lineHeight: 1.6, maxWidth: 860,
+        }}>
+          {detail}
+        </div>
+      )}
+    </div>
+  );
 };
 
 export const UpgradeDiagsPage: React.FC = () => {
@@ -200,49 +239,18 @@ export const UpgradeDiagsPage: React.FC = () => {
         </div>
       </PageSection>
 
-      <PageSection style={{ paddingTop: 0, paddingBottom: 0 }}>
-        {activeTab === 'checks' && (
-          <div style={{
-            display: 'flex', gap: 14, alignItems: 'flex-start',
-            padding: '12px 16px',
-            background: T.infoBg,
-            borderBottom: `1px solid ${T.border}`,
-          }}>
-            <span style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}>ℹ</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
-                Read-only — no upgrade is triggered
-              </div>
-              <div style={{ fontSize: 13, color: T.textSubtle, lineHeight: 1.55, maxWidth: 860 }}>
-                Preflight checks inspect current cluster state to identify potential roadblocks before an upgrade:
-                admin acknowledgements, critical alerts, PodDisruptionBudgets that could stall node drains,
-                and pull secret validity. Use these results to build confidence and address issues before scheduling
-                a maintenance window.
-              </div>
-            </div>
-          </div>
-        )}
-        {activeTab === 'status' && (
-          <div style={{
-            display: 'flex', gap: 14, alignItems: 'flex-start',
-            padding: '12px 16px',
-            background: T.bgSecondary,
-            borderBottom: `1px solid ${T.border}`,
-          }}>
-            <span style={{ fontSize: 20, lineHeight: 1, marginTop: 2, color: T.info }}>⟳</span>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
-                Live upgrade snapshot · auto-refreshes every 30s
-              </div>
-              <div style={{ fontSize: 13, color: T.textSubtle, lineHeight: 1.55, maxWidth: 860 }}>
-                Tracks ClusterVersion, ClusterOperators, MachineConfigPools, nodes, and MachineHealthChecks in real time.
-                Click any operator or node row to drill into conditions, PDB drain blockers, cloud-provider errors,
-                and K8s node conditions — with actionable remediation guidance inline.
-              </div>
-            </div>
-          </div>
-        )}
-      </PageSection>
+      <TabDescription
+        summary={
+          activeTab === 'checks'
+            ? 'Diagnostics Checks — Run a read-only preflight analysis against a target version and channel before committing to an upgrade.'
+            : 'Upgrade Status — Live snapshot of an in-progress or recently completed cluster upgrade. Auto-refreshes every 30s.'
+        }
+        detail={
+          activeTab === 'checks'
+            ? 'Checks are entirely read-only and non-intrusive. No upgrade is triggered. They inspect current cluster state to identify potential roadblocks: admin acknowledgements, critical alerts, PodDisruptionBudgets that could stall node drains, and pull secret validity. Use the results to build confidence and address issues before scheduling a maintenance window.'
+            : 'Tracks ClusterVersion, ClusterOperators, MachineConfigPools, nodes, and MachineHealthChecks. Click any operator or node row to drill into conditions, PDB drain blockers, cloud-provider errors, and K8s node conditions — with actionable remediation guidance inline.'
+        }
+      />
 
       <PageSection>
         {activeTab === 'status' && <UpgradeStatusView />}
@@ -264,7 +272,7 @@ export const UpgradeDiagsPage: React.FC = () => {
             <EmptyStateBody>
               Run upgrade upgrade diags checks to validate cluster health before upgrading.
             </EmptyStateBody>
-            <Button variant="primary" onClick={() => openCreate()} style={{ marginTop: 16 }}>
+            <Button variant="primary" onClick={() => openCreate()} style={{ marginTop: 16, borderRadius: T.radiusMd }}>
               Run New Check
             </Button>
           </EmptyState>

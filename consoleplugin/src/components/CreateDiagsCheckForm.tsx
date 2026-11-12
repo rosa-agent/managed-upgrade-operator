@@ -227,7 +227,7 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
           {cvLoaded && (cvError || useCustomVersion) && (
             <>
               {cvError && (
-                <div style={{ padding: '8px 12px', marginBottom: 8, background: T.warningBg, borderLeft: '3px solid #c58c00', borderRadius: T.radiusSm, fontSize: 13, color: T.warning }}>
+                <div style={{ padding: '8px 12px', marginBottom: 8, background: T.warningBg, borderLeft: `3px solid ${T.warning}`, borderRadius: T.radiusSm, fontSize: 13, color: T.warning }}>
                   Unable to load available versions — enter manually
                 </div>
               )}
@@ -340,7 +340,7 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
 
       {/* Actions */}
       <div style={{ marginTop: 24, display: 'flex', gap: 12, alignItems: 'center' }}>
-        <Button variant="primary" isLoading={submitting} isDisabled={!canSubmit} onClick={handleSubmit}>
+        <Button variant="primary" isLoading={submitting} isDisabled={!canSubmit} onClick={handleSubmit} style={{ borderRadius: T.radiusMd }}>
           Run Checks
         </Button>
         <Button variant="link" onClick={handleClose} isDisabled={submitting}>

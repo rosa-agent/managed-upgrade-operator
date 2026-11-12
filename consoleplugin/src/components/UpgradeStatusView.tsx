@@ -916,6 +916,7 @@ export const UpgradeStatusView: React.FC = () => {
           onClick={() => fetchStatus(true)}
           isDisabled={refreshing}
           isLoading={refreshing}
+          style={{ borderRadius: T.radiusMd }}
         >
           Refresh
         </Button>
