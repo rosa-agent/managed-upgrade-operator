@@ -1,10 +1,9 @@
 import * as React from 'react';
 import {
   Page, PageSection, PageSectionVariants, Title,
-  Button, Spinner, Alert, EmptyState, EmptyStateBody, Label,
+  Button, Spinner, Alert, EmptyState, EmptyStateBody,
 } from '@patternfly/react-core';
-import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
-import { TrashIcon, SyncAltIcon, PlusCircleIcon } from '@patternfly/react-icons';
+import { TrashIcon, SyncAltIcon, PlusCircleIcon, CaretDownIcon, CaretRightIcon } from '@patternfly/react-icons';
 import { useK8sWatchResource, consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 import { type UpgradePreflightCheck } from '../types';
 import { StatusBadge } from './StatusBadge';
@@ -25,15 +24,16 @@ const relativeTime = (ts?: string): string => {
   return new Date(ts).toLocaleDateString();
 };
 
-// Left border color gives instant row-level severity at a glance
-const rowBorderColor = (result?: string): string => {
-  if (result === 'Failed') return 'var(--pf-v5-global--palette--red-200)';
-  if (result === 'Error')  return 'var(--pf-v5-global--palette--orange-300)';
-  if (result === 'Warning') return 'var(--pf-v5-global--palette--gold-300)';
-  if (result === 'Passed') return 'var(--pf-v5-global--palette--green-300)';
+// Row border color keyed on overall result
+const resultBorder = (r?: string) => {
+  if (r === 'Failed')  return '#c9190b';
+  if (r === 'Error')   return '#c95f0b';
+  if (r === 'Warning') return '#c58c00';
+  if (r === 'Passed')  return '#5ba352';
   return 'transparent';
 };
 
+// Inline-styled colored summary counts — no PF CSS class dependency
 const CheckSummary: React.FC<{ pfc: UpgradePreflightCheck }> = ({ pfc }) => {
   const s = pfc.status;
   if (!s || (!s.completedAt && !s.startedAt)) {
@@ -42,36 +42,39 @@ const CheckSummary: React.FC<{ pfc: UpgradePreflightCheck }> = ({ pfc }) => {
   if (s.startedAt && !s.completedAt) {
     const done = (s.checksPassed ?? 0) + (s.checksFailed ?? 0) + (s.checksErrored ?? 0) + (s.checksWarned ?? 0);
     const total = s.checks?.length ?? 0;
-    return (
-      <span style={{ color: 'var(--pf-v5-global--info-color--100)' }}>
-        Running{total > 0 ? ` (${done} / ${total})` : '…'}
-      </span>
-    );
+    return <span style={{ color: '#73bcf7' }}>Running{total > 0 ? ` (${done}/${total})` : '…'}</span>;
   }
+
+  const pills: Array<[number | undefined, string, string]> = [
+    [s.checksPassed,  'passed',  '#5ba352'],
+    [s.checksFailed,  'failed',  '#c9190b'],
+    [s.checksErrored, (s.checksErrored ?? 0) === 1 ? 'error' : 'errors', '#c95f0b'],
+    [s.checksWarned,  (s.checksWarned  ?? 0) === 1 ? 'warning' : 'warnings', '#c58c00'],
+  ];
+
   return (
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-      {(s.checksPassed ?? 0) > 0 && (
-        <Label color="green" isCompact>{s.checksPassed} passed</Label>
-      )}
-      {(s.checksFailed ?? 0) > 0 && (
-        <Label color="red" isCompact>{s.checksFailed} failed</Label>
-      )}
-      {(s.checksErrored ?? 0) > 0 && (
-        <Label color="orange" isCompact>{s.checksErrored} {s.checksErrored === 1 ? 'error' : 'errors'}</Label>
-      )}
-      {(s.checksWarned ?? 0) > 0 && (
-        <Label color="gold" isCompact>{s.checksWarned} {s.checksWarned === 1 ? 'warning' : 'warnings'}</Label>
-      )}
-    </div>
+    <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      {pills.filter(([n]) => (n ?? 0) > 0).map(([n, label, color]) => (
+        <span key={label} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '1px 8px', borderRadius: 20,
+          background: `${color}22`, color, border: `1px solid ${color}55`,
+          fontWeight: 600, fontSize: 12,
+        }}>
+          {n} {label}
+        </span>
+      ))}
+    </span>
   );
 };
 
 export const PreflightCheckPage: React.FC = () => {
-  const [createOpen, setCreateOpen]   = React.useState(false);
+  const [createOpen, setCreateOpen]       = React.useState(false);
   const [createInitial, setCreateInitial] = React.useState<InitialValues | undefined>();
-  const [expanded, setExpanded]       = React.useState<Record<string, boolean>>({});
-  const [deleting, setDeleting]       = React.useState<Record<string, boolean>>({});
-  const [deleteError, setDeleteError] = React.useState<string | null>(null);
+  const [expanded, setExpanded]           = React.useState<Record<string, boolean>>({});
+  const [hoveredRow, setHoveredRow]       = React.useState<string | null>(null);
+  const [deleting, setDeleting]           = React.useState<Record<string, boolean>>({});
+  const [deleteError, setDeleteError]     = React.useState<string | null>(null);
 
   const [checks, loaded, loadError] = useK8sWatchResource<UpgradePreflightCheck[]>({
     groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradePreflightCheck' },
@@ -120,6 +123,27 @@ export const PreflightCheckPage: React.FC = () => {
     });
   };
 
+  // Card container style for visual depth
+  const cardStyle: React.CSSProperties = {
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    overflow: 'hidden',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+  };
+
+  const thStyle: React.CSSProperties = {
+    padding: '10px 16px',
+    textAlign: 'left',
+    fontWeight: 600,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: 'rgba(255,255,255,0.5)',
+    borderBottom: '1px solid rgba(255,255,255,0.1)',
+    background: 'rgba(255,255,255,0.03)',
+    whiteSpace: 'nowrap',
+  };
+
   return (
     <Page>
       <PageSection variant={PageSectionVariants.light}>
@@ -139,7 +163,7 @@ export const PreflightCheckPage: React.FC = () => {
         )}
         {!loaded && <Spinner />}
 
-        {loaded && !loadError && sorted.length === 0 && (
+        {loaded && !loadError && sorted.length === 0 && !createOpen && (
           <EmptyState>
             <EmptyStateBody>
               Run preflight checks before upgrading to validate cluster readiness.
@@ -151,121 +175,164 @@ export const PreflightCheckPage: React.FC = () => {
         )}
 
         {loaded && sorted.length > 0 && (
-          <Table aria-label="Upgrade preflight checks" style={{ width: '100%' }}>
-            <Thead>
-              <Tr>
-                <Th style={{ width: 32 }} />
-                <Th style={{ minWidth: 180 }}>Target</Th>
-                <Th style={{ width: 120 }}>Result</Th>
-                <Th style={{ minWidth: 220 }}>Checks</Th>
-                <Th style={{ width: 130 }}>Started</Th>
-                <Th style={{ width: 90 }} />
-              </Tr>
-            </Thead>
-            <Tbody>
-              {sorted.map((pfc, rowIndex) => {
-                const name        = pfc.metadata?.name ?? '';
-                const isExpanded  = !!expanded[name];
-                const isDeleting  = !!deleting[name];
-                const description = pfc.metadata?.annotations?.[DESCRIPTION_ANNOTATION];
-                const borderColor = rowBorderColor(pfc.status?.overallResult);
+          <div style={cardStyle}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: 36 }} />
+                <col style={{ minWidth: 180 }} />
+                <col style={{ width: 120 }} />
+                <col />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 90 }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={thStyle} />
+                  <th style={thStyle}>Target</th>
+                  <th style={thStyle}>Result</th>
+                  <th style={thStyle}>Checks</th>
+                  <th style={thStyle}>Started</th>
+                  <th style={thStyle} />
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((pfc) => {
+                  const name        = pfc.metadata?.name ?? '';
+                  const isExpanded  = !!expanded[name];
+                  const isDeleting  = !!deleting[name];
+                  const isHovered   = hoveredRow === name;
+                  const description = pfc.metadata?.annotations?.[DESCRIPTION_ANNOTATION];
+                  const border      = resultBorder(pfc.status?.overallResult);
 
-                return (
-                  <React.Fragment key={name}>
-                    <Tr
-                      style={{
-                        cursor: 'pointer',
-                        borderLeft: `4px solid ${borderColor}`,
-                      }}
-                      onClick={() => toggle(name)}
-                    >
-                      <Td
-                        expand={{ isExpanded, onToggle: () => toggle(name), rowIndex }}
-                        onClick={e => e.stopPropagation()}
-                      />
-                      <Td>
-                        <div style={{ fontWeight: 600, fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
-                          {pfc.spec.desired.version}
-                        </div>
-                        <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', color: 'var(--pf-v5-global--Color--200)' }}>
-                          {pfc.spec.desired.channel}
-                        </div>
-                        {description && (
-                          <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', color: 'var(--pf-v5-global--Color--200)', marginTop: 2 }}>
-                            {description}
-                          </div>
-                        )}
-                      </Td>
-                      <Td>
-                        {pfc.status?.overallResult
-                          ? <StatusBadge result={pfc.status.overallResult} />
-                          : <Spinner size="sm" />}
-                      </Td>
-                      <Td><CheckSummary pfc={pfc} /></Td>
-                      <Td style={{ color: 'var(--pf-v5-global--Color--200)' }}>
-                        {relativeTime(pfc.metadata?.creationTimestamp)}
-                      </Td>
-                      <Td
-                        onClick={e => e.stopPropagation()}
-                        style={{ whiteSpace: 'nowrap', textAlign: 'right' }}
+                  const rowBg = isExpanded
+                    ? 'rgba(255,255,255,0.05)'
+                    : isHovered
+                    ? 'rgba(255,255,255,0.03)'
+                    : 'transparent';
+
+                  const tdStyle: React.CSSProperties = {
+                    padding: '12px 16px',
+                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    verticalAlign: 'middle',
+                    background: rowBg,
+                    transition: 'background 0.1s',
+                  };
+
+                  return (
+                    <React.Fragment key={name}>
+                      <tr
+                        style={{ cursor: 'pointer', borderLeft: `4px solid ${border}` }}
+                        onClick={() => toggle(name)}
+                        onMouseEnter={() => setHoveredRow(name)}
+                        onMouseLeave={() => setHoveredRow(null)}
                       >
-                        <Button
-                          variant="plain"
-                          aria-label="Re-run with same settings"
-                          title="Re-run with same settings"
-                          onClick={() => handleRerun(pfc)}
-                          isDisabled={isDeleting}
+                        <td style={{ ...tdStyle, padding: '12px 8px', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>
+                          {isExpanded ? <CaretDownIcon /> : <CaretRightIcon />}
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 600, fontSize: 15 }}>{pfc.spec.desired.version}</div>
+                          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                            {pfc.spec.desired.channel}
+                          </div>
+                          {description && (
+                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2, fontStyle: 'italic' }}>
+                              {description}
+                            </div>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          {pfc.status?.overallResult
+                            ? <StatusBadge result={pfc.status.overallResult} />
+                            : <Spinner size="sm" />}
+                        </td>
+                        <td style={tdStyle}><CheckSummary pfc={pfc} /></td>
+                        <td style={{ ...tdStyle, color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                          {relativeTime(pfc.metadata?.creationTimestamp)}
+                        </td>
+                        <td
+                          style={{ ...tdStyle, textAlign: 'right', whiteSpace: 'nowrap' }}
+                          onClick={e => e.stopPropagation()}
                         >
-                          <SyncAltIcon />
-                        </Button>
-                        <Button
-                          variant="plain"
-                          aria-label="Delete this check run"
-                          title="Delete"
-                          onClick={() => handleDelete(pfc)}
-                          isDisabled={isDeleting}
-                          style={{ color: isDeleting ? undefined : 'var(--pf-v5-global--palette--red-200)' }}
-                        >
-                          {isDeleting ? <Spinner size="sm" /> : <TrashIcon />}
-                        </Button>
-                      </Td>
-                    </Tr>
-                    {isExpanded && (
-                      <Tr isExpanded>
-                        <Td colSpan={6} style={{ paddingTop: 0 }}>
-                          <PreflightCheckDetail pfc={pfc} />
-                        </Td>
-                      </Tr>
+                          <Button
+                            variant="plain"
+                            aria-label="Re-run with same settings"
+                            title="Re-run with same settings"
+                            onClick={() => handleRerun(pfc)}
+                            isDisabled={isDeleting}
+                            style={{ color: 'rgba(255,255,255,0.5)' }}
+                          >
+                            <SyncAltIcon />
+                          </Button>
+                          <Button
+                            variant="plain"
+                            aria-label="Delete this check run"
+                            title="Delete"
+                            onClick={() => handleDelete(pfc)}
+                            isDisabled={isDeleting}
+                            style={{ color: isDeleting ? 'rgba(255,255,255,0.3)' : '#c9190b' }}
+                          >
+                            {isDeleting ? <Spinner size="sm" /> : <TrashIcon />}
+                          </Button>
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            style={{
+                              borderLeft: `4px solid ${border}`,
+                              borderBottom: '1px solid rgba(255,255,255,0.07)',
+                              padding: 0,
+                              background: 'rgba(255,255,255,0.02)',
+                            }}
+                          >
+                            <PreflightCheckDetail pfc={pfc} />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* Run New Check row */}
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      padding: '12px 16px',
+                      textAlign: 'center',
+                      borderTop: sorted.length > 0 ? '1px solid rgba(255,255,255,0.07)' : undefined,
+                    }}
+                  >
+                    {!createOpen ? (
+                      <Button
+                        variant="link"
+                        icon={<PlusCircleIcon />}
+                        onClick={() => openCreate()}
+                      >
+                        Run New Check
+                      </Button>
+                    ) : (
+                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                        Fill in the form below to run a new check
+                      </span>
                     )}
-                  </React.Fragment>
-                );
-              })}
-
-              <Tr>
-                <Td
-                  colSpan={6}
-                  style={{
-                    textAlign: 'center',
-                    borderTop: '1px solid var(--pf-v5-global--BorderColor--100)',
-                    padding: '12px 0',
-                  }}
-                >
-                  <Button variant="link" icon={<PlusCircleIcon />} onClick={() => openCreate()}>
-                    Run New Check
-                  </Button>
-                </Td>
-              </Tr>
-            </Tbody>
-          </Table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         )}
-      </PageSection>
 
-      <CreatePreflightForm
-        isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => setCreateOpen(false)}
-        initialValues={createInitial}
-      />
+        {/* Inline form panel — no Modal, stays within iframe bounds */}
+        <CreatePreflightForm
+          isOpen={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => setCreateOpen(false)}
+          initialValues={createInitial}
+        />
+      </PageSection>
     </Page>
   );
 };

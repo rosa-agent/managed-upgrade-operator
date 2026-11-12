@@ -1,17 +1,13 @@
 import * as React from 'react';
 import {
-  Modal, ModalVariant, Button, Form, FormGroup,
-  FormSelect, FormSelectOption, TextInput,
-  FormHelperText, HelperText, HelperTextItem,
-  Alert, Spinner,
+  Button, Form, FormGroup, FormSelect, FormSelectOption,
+  FormHelperText, HelperText, HelperTextItem, TextInput, Spinner,
 } from '@patternfly/react-core';
+import { TimesIcon } from '@patternfly/react-icons';
 import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 
 // MUO's HTTP service creates the CR using the operator's service account,
-// which bypasses the sre-regular-user-validation admission webhook that blocks
-// direct k8s API creates from user tokens.
-// The ConsolePlugin proxy (alias: muo-api) forwards requests to
-// managed-upgrade-operator-preflight:8443 with the user's Bearer token.
+// bypassing the sre-regular-user-validation admission webhook.
 const PREFLIGHT_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/preflight-checks';
 
 interface ClusterVersion extends K8sResourceCommon {
@@ -42,14 +38,14 @@ const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const CHANNEL_RE = /^(stable|fast|candidate|eus)-\d+\.\d+$/;
 
 export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreated, initialValues }) => {
-  const [version, setVersion] = React.useState('');
-  const [channel, setChannel] = React.useState('');
-  const [platform, setPlatform] = React.useState<'OSD' | 'ARO'>('OSD');
-  const [description, setDescription] = React.useState('');
+  const [version, setVersion]               = React.useState('');
+  const [channel, setChannel]               = React.useState('');
+  const [platform, setPlatform]             = React.useState<'OSD' | 'ARO'>('OSD');
+  const [description, setDescription]       = React.useState('');
   const [useCustomVersion, setUseCustomVersion] = React.useState(false);
   const [useCustomChannel, setUseCustomChannel] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError]                   = React.useState<string | null>(null);
+  const [submitting, setSubmitting]         = React.useState(false);
 
   const [cv, cvLoaded, cvError] = useK8sWatchResource<ClusterVersion>({
     groupVersionKind: { group: 'config.openshift.io', version: 'v1', kind: 'ClusterVersion' },
@@ -59,14 +55,13 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
   const currentVersion = cv?.status?.desired?.version
     ?? cv?.status?.history?.find(h => h.state === 'Completed')?.version
     ?? '';
-  const currentChannel = cv?.spec?.channel ?? '';
-  const availableUpdates = cv?.status?.availableUpdates ?? [];
-  const conditionalUpdates = cv?.status?.conditionalUpdates ?? [];
+  const currentChannel      = cv?.spec?.channel ?? '';
+  const availableUpdates    = cv?.status?.availableUpdates ?? [];
+  const conditionalUpdates  = cv?.status?.conditionalUpdates ?? [];
 
   const channelMatch = currentChannel.match(/^(stable|fast|candidate|eus)-(\d+\.\d+)$/);
-  const channelXY = channelMatch?.[2] ?? '';
+  const channelXY    = channelMatch?.[2] ?? '';
 
-  // Seed form when opened: use initialValues (re-run) or cluster defaults
   React.useEffect(() => {
     if (!isOpen) return;
     if (initialValues) {
@@ -83,7 +78,7 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
 
   const versionError = version && !SEMVER_RE.test(version) ? 'Version must be in X.Y.Z format (e.g. 4.22.22)' : '';
   const channelError = channel && !CHANNEL_RE.test(channel) ? 'Channel must be in {type}-X.Y format (e.g. stable-4.22)' : '';
-  const canSubmit = version && channel && !versionError && !channelError && !submitting;
+  const canSubmit    = version && channel && !versionError && !channelError && !submitting;
 
   const resetForm = () => {
     setVersion('');
@@ -110,39 +105,59 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
           ...(description ? { description } : {}),
         }),
       });
-
       resetForm();
       onClose();
       onCreated();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || 'Failed to create preflight check');
+      setError(e instanceof Error ? e.message : 'Failed to create preflight check');
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
-    <Modal
-      variant={ModalVariant.small}
-      title={initialValues ? 'Re-run Upgrade Preflight Checks' : 'Run Upgrade Preflight Checks'}
-      isOpen={isOpen}
-      onClose={handleClose}
-      actions={[
-        <Button key="run" variant="primary" isLoading={submitting} isDisabled={!canSubmit} onClick={handleSubmit}>
-          Run Checks
-        </Button>,
-        <Button key="cancel" variant="link" onClick={handleClose} isDisabled={submitting}>
-          Cancel
-        </Button>,
-      ]}
-    >
-      <Form>
-        {currentVersion && (
-          <Alert variant="info" isInline title={`Current cluster version: ${currentVersion}`} />
-        )}
-        {error && <Alert variant="danger" isInline title="Failed to create preflight check">{error}</Alert>}
+  if (!isOpen) return null;
 
+  // Inline panel — avoids PF Modal's React portal which breaks inside the
+  // OpenShift console's plugin iframe (renders outside the visible window).
+  return (
+    <div style={{
+      marginTop: 16,
+      padding: '20px 24px',
+      border: '1px solid rgba(255,255,255,0.12)',
+      borderRadius: 8,
+      background: 'rgba(255,255,255,0.03)',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 18 }}>
+            {initialValues ? 'Re-run Upgrade Preflight Checks' : 'Run Upgrade Preflight Checks'}
+          </div>
+          {currentVersion && (
+            <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+              Current cluster version: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{currentVersion}</strong>
+            </div>
+          )}
+        </div>
+        <Button variant="plain" aria-label="Close form" onClick={handleClose} style={{ color: 'rgba(255,255,255,0.5)' }}>
+          <TimesIcon />
+        </Button>
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div style={{
+          padding: '10px 14px', marginBottom: 16,
+          background: 'rgba(201,25,11,0.12)',
+          borderLeft: '3px solid #c9190b',
+          borderRadius: 4, color: '#c9190b', fontSize: 13,
+        }}>
+          {error}
+        </div>
+      )}
+
+      <Form>
         {/* ── Version ── */}
         <FormGroup label="Target Version" isRequired fieldId="version">
           {!cvLoaded && <><Spinner size="sm" /> Loading available versions…</>}
@@ -172,7 +187,7 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
                 )}
                 {conditionalUpdates.length > 0 && (
                   <>
-                    <FormSelectOption value="" label="— Conditional Updates (may have risks) —" isDisabled />
+                    <FormSelectOption value="" label="— Conditional Updates —" isDisabled />
                     {conditionalUpdates.map(u => (
                       <FormSelectOption
                         key={u.release.version}
@@ -186,20 +201,22 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
                 <FormSelectOption value="__custom__" label="Custom version…" />
               </FormSelect>
               <FormHelperText>
-                <HelperText>
-                  <HelperTextItem>
-                    {availableUpdates.length === 0 && conditionalUpdates.length === 0 && currentVersion
-                      ? 'No updates available from CVO — use "Custom version…" to test any target.'
-                      : 'Select from cluster\'s available upgrade targets, or enter a custom version.'}
-                  </HelperTextItem>
-                </HelperText>
+                <HelperText><HelperTextItem>
+                  {availableUpdates.length === 0 && conditionalUpdates.length === 0 && currentVersion
+                    ? 'No updates available from CVO — use "Custom version…" to test any target.'
+                    : 'Select from cluster\'s available upgrade targets, or enter a custom version.'}
+                </HelperTextItem></HelperText>
               </FormHelperText>
             </>
           )}
 
           {cvLoaded && (cvError || useCustomVersion) && (
             <>
-              {cvError && <Alert variant="warning" isInline title="Unable to load available versions — enter manually" />}
+              {cvError && (
+                <div style={{ padding: '8px 12px', marginBottom: 8, background: 'rgba(240,171,0,0.1)', borderLeft: '3px solid #c58c00', borderRadius: 4, fontSize: 13, color: '#c58c00' }}>
+                  Unable to load available versions — enter manually
+                </div>
+              )}
               <TextInput
                 id="version-custom"
                 value={version}
@@ -306,6 +323,16 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
           </FormHelperText>
         </FormGroup>
       </Form>
-    </Modal>
+
+      {/* Actions */}
+      <div style={{ marginTop: 24, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <Button variant="primary" isLoading={submitting} isDisabled={!canSubmit} onClick={handleSubmit}>
+          Run Checks
+        </Button>
+        <Button variant="link" onClick={handleClose} isDisabled={submitting}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 };
