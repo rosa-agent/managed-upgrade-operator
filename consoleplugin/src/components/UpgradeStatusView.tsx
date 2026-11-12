@@ -6,6 +6,22 @@ import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
 const STATUS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-status';
 const POLL_INTERVAL_MS = 30_000;
 
+// PF semantic design tokens — single source of truth for all colors in this file.
+const T = {
+  danger:     'var(--pf-t--global--color--status--danger--default)',
+  warning:    'var(--pf-t--global--color--status--warning--default)',
+  success:    'var(--pf-t--global--color--status--success--default)',
+  info:       'var(--pf-t--global--color--status--info--default)',
+  textSubtle: 'var(--pf-t--global--color--text--subtle)',
+  textMuted:  'var(--pf-t--global--color--text--placeholder)',
+  border:     'var(--pf-t--global--border--color--default)',
+  bgSecondary:'var(--pf-t--global--background--color--secondary--default)',
+  shadow:     'var(--pf-t--global--shadow--md)',
+  dangerBg:   'var(--pf-t--global--background--color--status--danger--default)',
+  warningBg:  'var(--pf-t--global--background--color--status--warning--default)',
+  infoBg:     'var(--pf-t--global--background--color--status--info--default)',
+} as const;
+
 // ---- Types (mirror upgrade_status.go response) ----------------------------
 
 interface DrainBlocker {
@@ -106,27 +122,27 @@ interface UpgradeSnapshot {
 // ---- Colour helpers --------------------------------------------------------
 
 const PHASE_COLORS: Record<string, string> = {
-  'complete':       '#5ba352',
-  'updated':        '#5ba352',
-  'done':           '#5ba352',
-  'available':      '#5ba352',
-  'not-started':    'rgba(255,255,255,0.35)',
-  'upgrading':      '#73bcf7',
-  'updating':       '#73bcf7',
-  'control-plane':  '#73bcf7',
-  'operators':      '#73bcf7',
-  'worker-upgrade': '#73bcf7',
-  'progressing':    '#73bcf7',
-  'working':        '#73bcf7',
-  'rebooting':      '#c58c00',
-  'draining':       '#c58c00',
-  'pre-checks':     '#c58c00',
-  'stalled':        '#c95f0b',
-  'degraded':       '#c9190b',
-  'failed':         '#c9190b',
+  'complete':       T.success,
+  'updated':        T.success,
+  'done':           T.success,
+  'available':      T.success,
+  'not-started':    'var(--pf-t--global--color--text--subtle)',
+  'upgrading':      T.info,
+  'updating':       T.info,
+  'control-plane':  T.info,
+  'operators':      T.info,
+  'worker-upgrade': T.info,
+  'progressing':    T.info,
+  'working':        T.info,
+  'rebooting':      T.warning,
+  'draining':       T.warning,
+  'pre-checks':     T.warning,
+  'stalled':        T.warning,
+  'degraded':       T.danger,
+  'failed':         T.danger,
 };
 
-const phaseColor  = (p: string) => PHASE_COLORS[p] ?? 'rgba(255,255,255,0.35)';
+const phaseColor  = (p: string) => PHASE_COLORS[p] ?? 'var(--pf-t--global--color--text--subtle)';
 const phaseLabel  = (p: string) => p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 const PhaseBadge: React.FC<{ phase: string; size?: 'sm' | 'md' }> = ({ phase, size = 'sm' }) => {
@@ -163,10 +179,10 @@ const SectionHeader: React.FC<{ title: string; badge?: React.ReactNode; meta?: s
   <div style={{
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '8px 16px',
-    background: 'rgba(255,255,255,0.03)',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
+    background: 'var(--pf-t--global--color--text--subtle)',
+    borderBottom: `1px solid ${T.border}`,
     fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em',
-    color: 'rgba(255,255,255,0.5)',
+    color: 'var(--pf-t--global--color--text--subtle)',
   }}>
     <span>{title}</span>
     {badge}
@@ -185,9 +201,9 @@ const OperatorsTable: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
   const th: React.CSSProperties = {
     padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.05em',
-    color: 'rgba(255,255,255,0.4)',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.02)',
+    color: 'var(--pf-t--global--color--text--subtle)',
+    borderBottom: `1px solid ${T.border}`,
+    background: 'var(--pf-t--global--color--text--subtle)',
     whiteSpace: 'nowrap',
   };
 
@@ -207,20 +223,20 @@ const OperatorsTable: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
           const color = phaseColor(op.phase);
           const tdStyle: React.CSSProperties = {
             padding: '8px 12px',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            borderBottom: `1px solid ${T.border}`,
             verticalAlign: 'top',
           };
           return (
             <tr key={op.name} style={{ borderLeft: op.degraded || op.progressing ? `3px solid ${color}` : '3px solid transparent' }}>
               <td style={{ ...tdStyle, fontWeight: op.degraded || op.progressing ? 600 : 400 }}>{op.name}</td>
-              <td style={{ ...tdStyle, color: 'rgba(255,255,255,0.5)', fontFamily: 'monospace', fontSize: 12 }}>
+              <td style={{ ...tdStyle, color: 'var(--pf-t--global--color--text--subtle)', fontFamily: 'monospace', fontSize: 12 }}>
                 {op.version ?? '—'}
               </td>
               <td style={tdStyle}><PhaseBadge phase={op.phase} /></td>
-              <td style={{ ...tdStyle, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>
+              <td style={{ ...tdStyle, color: 'var(--pf-t--global--color--text--subtle)', whiteSpace: 'nowrap' }}>
                 {fmtElapsed(op.elapsedInPhaseSeconds)}
               </td>
-              <td style={{ ...tdStyle, color: 'rgba(255,255,255,0.55)', fontSize: 12, wordBreak: 'break-word' }}>
+              <td style={{ ...tdStyle, color: 'var(--pf-t--global--color--text--subtle)', fontSize: 12, wordBreak: 'break-word' }}>
                 {op.message ?? '—'}
               </td>
             </tr>
@@ -240,27 +256,27 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
   const countStyle = (highlight?: boolean): React.CSSProperties => ({
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     padding: '6px 14px',
-    background: 'rgba(255,255,255,0.03)',
+    background: 'var(--pf-t--global--color--text--subtle)',
     borderRadius: 6,
-    border: `1px solid ${highlight ? color + '55' : 'rgba(255,255,255,0.08)'}`,
+    border: `1px solid ${highlight ? color + '55' : 'var(--pf-t--global--color--text--subtle)'}`,
   });
 
   const th: React.CSSProperties = {
     padding: '6px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.05em',
-    color: 'rgba(255,255,255,0.4)',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    background: 'rgba(255,255,255,0.02)',
+    color: 'var(--pf-t--global--color--text--subtle)',
+    borderBottom: `1px solid ${T.border}`,
+    background: 'var(--pf-t--global--color--text--subtle)',
   };
 
   return (
-    <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
       {/* Pool header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
         padding: '10px 14px',
-        background: 'rgba(255,255,255,0.04)',
-        borderBottom: expanded ? '1px solid rgba(255,255,255,0.1)' : undefined,
+        background: 'var(--pf-t--global--color--text--subtle)',
+        borderBottom: expanded ? `1px solid ${T.border}` : undefined,
         borderLeft: `4px solid ${color}`,
       }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>{pool.name}</span>
@@ -268,29 +284,29 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           {/* Count pills */}
           <span style={countStyle(pool.updated < pool.total)}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: pool.updated === pool.total ? '#5ba352' : '#73bcf7' }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: pool.updated === pool.total ? T.success : T.info }}>
               {pool.updated}/{pool.total}
             </span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>updated</span>
+            <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>updated</span>
           </span>
           <span style={countStyle()}>
             <span style={{ fontSize: 16, fontWeight: 700 }}>{pool.ready}</span>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>ready</span>
+            <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>ready</span>
           </span>
           {pool.unavailable > 0 && (
             <span style={countStyle(true)}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#c58c00' }}>{pool.unavailable}</span>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>unavailable</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: T.warning }}>{pool.unavailable}</span>
+              <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>unavailable</span>
             </span>
           )}
           {pool.degraded > 0 && (
             <span style={countStyle(true)}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#c9190b' }}>{pool.degraded}</span>
-              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>degraded</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: T.danger }}>{pool.degraded}</span>
+              <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>degraded</span>
             </span>
           )}
           {pool.elapsedSeconds !== undefined && pool.elapsedSeconds > 0 && (
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', alignSelf: 'center', marginLeft: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)', alignSelf: 'center', marginLeft: 4 }}>
               {fmtElapsed(pool.elapsedSeconds)}
             </span>
           )}
@@ -300,7 +316,7 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
             variant="plain"
             aria-label={expanded ? 'Collapse nodes' : 'Expand nodes'}
             onClick={() => setExpanded(e => !e)}
-            style={{ color: 'rgba(255,255,255,0.4)', padding: '0 4px' }}
+            style={{ color: 'var(--pf-t--global--color--text--subtle)', padding: '0 4px' }}
           >
             {expanded ? <CaretDownIcon /> : <CaretRightIcon />}
           </Button>
@@ -335,7 +351,7 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
               const hasIssues = hasBlockers || hasProviderErrors;
               const tdBase: React.CSSProperties = {
                 padding: '7px 10px',
-                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                borderBottom: `1px solid ${T.border}`,
                 verticalAlign: 'top',
               };
               return (
@@ -347,46 +363,46 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
                     <td style={tdBase}><PhaseBadge phase={node.phase} /></td>
                     <td style={tdBase}>
                       {configMatch
-                        ? <span style={{ color: '#5ba352' }}>✓ current</span>
+                        ? <span style={{ color: T.success }}>✓ current</span>
                         : <span style={{ color: nc, fontFamily: 'monospace', fontSize: 11 }}>
                             →{(node.desiredConfig ?? '').slice(-8)}
                           </span>
                       }
                     </td>
-                    <td style={{ ...tdBase, color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                    <td style={{ ...tdBase, color: 'var(--pf-t--global--color--text--subtle)', whiteSpace: 'nowrap' }}>
                       {fmtElapsed(node.elapsedSeconds)}
                     </td>
                     <td style={tdBase}>
                       {hasBlockers && (
-                        <span style={{ color: '#c9190b', fontWeight: 600 }}>
+                        <span style={{ color: T.danger, fontWeight: 600 }}>
                           {node.drainBlockers!.length} PDB blocker{node.drainBlockers!.length > 1 ? 's' : ''}
                         </span>
                       )}
                       {hasProviderErrors && (
-                        <span style={{ color: '#c95f0b', fontWeight: 600, marginLeft: hasBlockers ? 8 : 0 }}>
+                        <span style={{ color: T.warning, fontWeight: 600, marginLeft: hasBlockers ? 8 : 0 }}>
                           {node.providerErrors!.length} provider error{node.providerErrors!.length > 1 ? 's' : ''}
                         </span>
                       )}
-                      {!hasIssues && <span style={{ color: 'rgba(255,255,255,0.3)' }}>—</span>}
+                      {!hasIssues && <span style={{ color: 'var(--pf-t--global--color--text--subtle)' }}>—</span>}
                     </td>
                   </tr>
 
                   {/* PDB drain blockers — one sub-row per blocker */}
                   {hasBlockers && node.drainBlockers!.map((db, i) => (
-                    <tr key={`db-${i}`} style={{ background: 'rgba(201,25,11,0.06)' }}>
-                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11 }}>
-                        <span style={{ color: '#c9190b', fontWeight: 700 }}>PDB block: </span>
-                        <span style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'monospace' }}>
+                    <tr key={`db-${i}`} style={{ background: T.dangerBg }}>
+                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: `1px solid ${T.border}`, fontSize: 11 }}>
+                        <span style={{ color: T.danger, fontWeight: 700 }}>PDB block: </span>
+                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)', fontFamily: 'monospace' }}>
                           {db.podNamespace}/{db.pdbName}
                         </span>
                         {db.owner && (
-                          <span style={{ color: 'rgba(255,255,255,0.45)', marginLeft: 8 }}>owner: {db.owner}</span>
+                          <span style={{ color: 'var(--pf-t--global--color--text--subtle)', marginLeft: 8 }}>owner: {db.owner}</span>
                         )}
-                        <span style={{ color: 'rgba(255,255,255,0.45)', marginLeft: 8 }}>
+                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)', marginLeft: 8 }}>
                           disruptions allowed: {db.disruptionsAllowed} · healthy: {db.currentHealthy}/{db.desiredHealthy}
                         </span>
                         {db.violation && (
-                          <span style={{ marginLeft: 8, color: '#c9190b', fontFamily: 'monospace' }}>[{db.violation}]</span>
+                          <span style={{ marginLeft: 8, color: T.danger, fontFamily: 'monospace' }}>[{db.violation}]</span>
                         )}
                       </td>
                     </tr>
@@ -394,11 +410,11 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
 
                   {/* Provider / cloud errors — one sub-row per error */}
                   {hasProviderErrors && node.providerErrors!.map((pe, i) => (
-                    <tr key={`pe-${i}`} style={{ background: 'rgba(201,95,11,0.06)' }}>
-                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', fontSize: 11 }}>
-                        <span style={{ color: '#c95f0b', fontWeight: 700 }}>
+                    <tr key={`pe-${i}`} style={{ background: T.warningBg }}>
+                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: `1px solid ${T.border}`, fontSize: 11 }}>
+                        <span style={{ color: T.warning, fontWeight: 700 }}>
                           {pe.source}{pe.reason ? ` / ${pe.reason}` : ''}: </span>
-                        <span style={{ color: 'rgba(255,255,255,0.7)' }}>{pe.message}</span>
+                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)' }}>{pe.message}</span>
                       </td>
                     </tr>
                   ))}
@@ -430,33 +446,33 @@ const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
   ) : null;
 
   return (
-    <div style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, overflow: 'hidden', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', marginBottom: 20, boxShadow: T.shadow }}>
       {/* Clickable header row */}
       <div
         onClick={() => setExpanded(e => !e)}
         style={{
           display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
           padding: '10px 16px',
-          background: expanded ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.03)',
-          borderBottom: expanded ? '1px solid rgba(255,255,255,0.1)' : undefined,
+          background: expanded ? 'var(--pf-t--global--color--text--subtle)' : 'var(--pf-t--global--color--text--subtle)',
+          borderBottom: expanded ? `1px solid ${T.border}` : undefined,
           userSelect: 'none',
         }}
       >
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'rgba(255,255,255,0.5)' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pf-t--global--color--text--subtle)' }}>
           Cluster Operators
         </span>
         <PhaseBadge phase={ops.phase} />
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {countPill(ops.available,    'available',   '#5ba352')}
-          {countPill(ops.progressing,  'progressing', '#73bcf7')}
-          {countPill(ops.degraded,     'degraded',    '#c9190b')}
+          {countPill(ops.available,    'available',   T.success)}
+          {countPill(ops.progressing,  'progressing', T.info)}
+          {countPill(ops.degraded,     'degraded',    T.danger)}
         </span>
         {ops.elapsedSeconds ? (
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginLeft: 4 }}>
+          <span style={{ fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)', marginLeft: 4 }}>
             {fmtElapsed(ops.elapsedSeconds)} elapsed
           </span>
         ) : null}
-        <span style={{ marginLeft: 'auto', color: 'rgba(255,255,255,0.35)', fontSize: 12 }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--pf-t--global--color--text--subtle)', fontSize: 12 }}>
           {ops.total} total · {expanded ? 'collapse ▲' : 'expand ▼'}
         </span>
       </div>
@@ -501,10 +517,10 @@ export const UpgradeStatusView: React.FC = () => {
   }, [fetchStatus]);
 
   const cardStyle: React.CSSProperties = {
-    border: '1px solid rgba(255,255,255,0.1)',
+    border: `1px solid ${T.border}`,
     borderRadius: 8,
     overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    boxShadow: T.shadow,
     marginBottom: 20,
   };
 
@@ -530,7 +546,7 @@ export const UpgradeStatusView: React.FC = () => {
           Refresh
         </Button>
         {lastRefresh && (
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+          <span style={{ fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)' }}>
             Last updated {lastRefresh.toLocaleTimeString()} · auto-refreshes every 30s
           </span>
         )}
@@ -553,7 +569,7 @@ export const UpgradeStatusView: React.FC = () => {
             <div style={{ padding: '14px 16px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               {/* Version */}
               <div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: 'var(--pf-t--global--color--text--subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                   Current Version
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'monospace' }}>
@@ -562,12 +578,12 @@ export const UpgradeStatusView: React.FC = () => {
               </div>
               {snapshot.targetVersion && snapshot.targetVersion !== snapshot.currentVersion && (
                 <>
-                  <div style={{ alignSelf: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 20 }}>→</div>
+                  <div style={{ alignSelf: 'center', color: 'var(--pf-t--global--color--text--subtle)', fontSize: 20 }}>→</div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                    <div style={{ fontSize: 11, color: 'var(--pf-t--global--color--text--subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                       Target Version
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'monospace', color: '#73bcf7' }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'monospace', color: T.info }}>
                       {snapshot.targetVersion}
                     </div>
                   </div>
@@ -575,7 +591,7 @@ export const UpgradeStatusView: React.FC = () => {
               )}
               {snapshot.elapsedSeconds !== undefined && snapshot.elapsedSeconds > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--pf-t--global--color--text--subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                     Elapsed
                   </div>
                   <div style={{ fontSize: 18, fontWeight: 600 }}>
@@ -590,11 +606,11 @@ export const UpgradeStatusView: React.FC = () => {
                     || (ph === 'control-plane' && ['operators', 'worker-upgrade', 'complete'].includes(snapshot.phase))
                     || (ph === 'operators' && ['worker-upgrade', 'complete'].includes(snapshot.phase));
                   const active = snapshot.phase === ph;
-                  const color = done ? '#5ba352' : active ? '#73bcf7' : 'rgba(255,255,255,0.2)';
+                  const color = done ? T.success : active ? T.info : 'var(--pf-t--global--color--text--subtle)';
                   return (
                     <React.Fragment key={ph}>
                       {ph !== 'control-plane' && (
-                        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>→</span>
+                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)', fontSize: 12 }}>→</span>
                       )}
                       <span style={{
                         fontSize: 11, fontWeight: 600,
@@ -612,8 +628,8 @@ export const UpgradeStatusView: React.FC = () => {
             {snapshot.cvoMessage && (
               <div style={{
                 padding: '8px 16px',
-                borderTop: '1px solid rgba(255,255,255,0.08)',
-                fontSize: 12, color: 'rgba(255,255,255,0.5)',
+                borderTop: `1px solid ${T.border}`,
+                fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)',
                 fontStyle: 'italic',
               }}>
                 {snapshot.cvoMessage}

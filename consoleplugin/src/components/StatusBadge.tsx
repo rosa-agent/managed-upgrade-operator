@@ -9,6 +9,20 @@ import { type CheckResult } from '../types';
 // PF's pf-m-red / pf-m-green etc. are not guaranteed to load in
 // the console plugin's iframe context.
 
+const C = {
+  success: 'var(--pf-t--global--color--status--success--default)',
+  danger:  'var(--pf-t--global--color--status--danger--default)',
+  warning: 'var(--pf-t--global--color--status--warning--default)',
+  info:    'var(--pf-t--global--color--status--info--default)',
+  subtle:  'var(--pf-t--global--color--text--subtle)',
+  successBg: 'var(--pf-t--global--background--color--status--success--default)',
+  dangerBg:  'var(--pf-t--global--background--color--status--danger--default)',
+  warningBg: 'var(--pf-t--global--background--color--status--warning--default)',
+  infoBg:    'var(--pf-t--global--background--color--status--info--default)',
+  subtleBg:  'var(--pf-t--global--background--color--secondary--default)',
+  border:    'var(--pf-t--global--border--color--default)',
+} as const;
+
 interface Config {
   label: string;
   bg: string;
@@ -18,13 +32,13 @@ interface Config {
 }
 
 const CONFIG: Record<CheckResult, Config> = {
-  Passed:   { label: 'Passed',    bg: 'rgba(23,130,48,0.18)',   fg: '#5ba352', border: 'rgba(23,130,48,0.4)',   icon: <CheckCircleIcon /> },
-  Failed:   { label: 'Failed',    bg: 'rgba(201,25,11,0.18)',   fg: '#c9190b', border: 'rgba(201,25,11,0.4)',   icon: <TimesCircleIcon /> },
-  Error:    { label: 'Error',     bg: 'rgba(201,97,11,0.18)',   fg: '#c95f0b', border: 'rgba(201,97,11,0.4)',   icon: <ExclamationCircleIcon /> },
-  Warning:  { label: 'Warning',   bg: 'rgba(240,171,0,0.18)',   fg: '#c58c00', border: 'rgba(240,171,0,0.4)',   icon: <ExclamationTriangleIcon /> },
-  Skipped:  { label: 'Skipped',   bg: 'rgba(106,110,115,0.18)', fg: '#6a6e73', border: 'rgba(106,110,115,0.4)', icon: <BanIcon /> },
-  TimedOut: { label: 'Timed Out', bg: 'rgba(201,97,11,0.18)',   fg: '#c95f0b', border: 'rgba(201,97,11,0.4)',   icon: <ClockIcon /> },
-  Unknown:  { label: 'Unknown',   bg: 'rgba(106,110,115,0.18)', fg: '#6a6e73', border: 'rgba(106,110,115,0.4)', icon: <QuestionCircleIcon /> },
+  Passed:   { label: 'Passed',    bg: C.successBg, fg: C.success, border: C.border, icon: <CheckCircleIcon /> },
+  Failed:   { label: 'Failed',    bg: C.dangerBg,  fg: C.danger,  border: C.border, icon: <TimesCircleIcon /> },
+  Error:    { label: 'Error',     bg: C.warningBg, fg: C.warning, border: C.border, icon: <ExclamationCircleIcon /> },
+  Warning:  { label: 'Warning',   bg: C.warningBg, fg: C.warning, border: C.border, icon: <ExclamationTriangleIcon /> },
+  Skipped:  { label: 'Skipped',   bg: C.subtleBg,  fg: C.subtle,  border: C.border, icon: <BanIcon /> },
+  TimedOut: { label: 'Timed Out', bg: C.warningBg, fg: C.warning, border: C.border, icon: <ClockIcon /> },
+  Unknown:  { label: 'Unknown',   bg: C.subtleBg,  fg: C.subtle,  border: C.border, icon: <QuestionCircleIcon /> },
 };
 
 interface Props { result: CheckResult; }

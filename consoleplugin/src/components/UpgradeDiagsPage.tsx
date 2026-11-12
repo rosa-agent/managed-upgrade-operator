@@ -16,6 +16,20 @@ const UPGRADEDIAGS_REQUEST_ID_LABEL = 'upgradediags.managed.openshift.io/request
 const UPGRADEDIAGS_DESCRIPTION_ANNOTATION = 'upgradediags.managed.openshift.io/description';
 const UPGRADEDIAGS_PROXY_BASE = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-diags';
 
+const T = {
+  danger:      'var(--pf-t--global--color--status--danger--default)',
+  warning:     'var(--pf-t--global--color--status--warning--default)',
+  success:     'var(--pf-t--global--color--status--success--default)',
+  info:        'var(--pf-t--global--color--status--info--default)',
+  textSubtle:  'var(--pf-t--global--color--text--subtle)',
+  textMuted:   'var(--pf-t--global--color--text--placeholder)',
+  border:      'var(--pf-t--global--border--color--default)',
+  bgSecondary: 'var(--pf-t--global--background--color--secondary--default)',
+  bgHover:     'var(--pf-t--global--background--color--secondary--hover)',
+  bgActive:    'var(--pf-t--global--background--color--secondary--click)',
+  shadow:      'var(--pf-t--global--shadow--md)',
+} as const;
+
 const relativeTime = (ts?: string): string => {
   if (!ts) return '—';
   const diff = Date.now() - new Date(ts).getTime();
@@ -25,12 +39,11 @@ const relativeTime = (ts?: string): string => {
   return new Date(ts).toLocaleDateString();
 };
 
-// Row border color keyed on overall result
 const resultBorder = (r?: string) => {
-  if (r === 'Failed')  return '#c9190b';
-  if (r === 'Error')   return '#c95f0b';
-  if (r === 'Warning') return '#c58c00';
-  if (r === 'Passed')  return '#5ba352';
+  if (r === 'Failed')  return T.danger;
+  if (r === 'Error')   return T.warning;
+  if (r === 'Warning') return T.warning;
+  if (r === 'Passed')  return T.success;
   return 'transparent';
 };
 
@@ -43,14 +56,14 @@ const CheckSummary: React.FC<{ pfc: UpgradeDiagsCheck }> = ({ pfc }) => {
   if (s.startedAt && !s.completedAt) {
     const done = (s.checksPassed ?? 0) + (s.checksFailed ?? 0) + (s.checksErrored ?? 0) + (s.checksWarned ?? 0);
     const total = s.checks?.length ?? 0;
-    return <span style={{ color: '#73bcf7' }}>Running{total > 0 ? ` (${done}/${total})` : '…'}</span>;
+    return <span style={{ color: T.info }}>Running{total > 0 ? ` (${done}/${total})` : '…'}</span>;
   }
 
   const pills: Array<[number | undefined, string, string]> = [
-    [s.checksPassed,  'passed',  '#5ba352'],
-    [s.checksFailed,  'failed',  '#c9190b'],
-    [s.checksErrored, (s.checksErrored ?? 0) === 1 ? 'error' : 'errors', '#c95f0b'],
-    [s.checksWarned,  (s.checksWarned  ?? 0) === 1 ? 'warning' : 'warnings', '#c58c00'],
+    [s.checksPassed,  'passed',  T.success],
+    [s.checksFailed,  'failed',  T.danger],
+    [s.checksErrored, (s.checksErrored ?? 0) === 1 ? 'error' : 'errors', T.warning],
+    [s.checksWarned,  (s.checksWarned  ?? 0) === 1 ? 'warning' : 'warnings', T.warning],
   ];
 
   return (
@@ -59,7 +72,7 @@ const CheckSummary: React.FC<{ pfc: UpgradeDiagsCheck }> = ({ pfc }) => {
         <span key={label} style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
           padding: '1px 8px', borderRadius: 20,
-          background: `${color}22`, color, border: `1px solid ${color}55`,
+          background: T.bgSecondary, color, border: `1px solid ${T.border}`,
           fontWeight: 600, fontSize: 12,
         }}>
           {n} {label}
@@ -132,12 +145,11 @@ export const UpgradeDiagsPage: React.FC = () => {
     });
   };
 
-  // Card container style for visual depth
   const cardStyle: React.CSSProperties = {
-    border: '1px solid rgba(255,255,255,0.1)',
+    border: `1px solid ${T.border}`,
     borderRadius: 8,
     overflow: 'hidden',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    boxShadow: T.shadow,
   };
 
   const thStyle: React.CSSProperties = {
@@ -147,9 +159,9 @@ export const UpgradeDiagsPage: React.FC = () => {
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    color: 'rgba(255,255,255,0.5)',
-    borderBottom: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(255,255,255,0.03)',
+    color: T.textSubtle,
+    borderBottom: `1px solid ${T.border}`,
+    background: T.bgSecondary,
     whiteSpace: 'nowrap',
   };
 
@@ -158,7 +170,7 @@ export const UpgradeDiagsPage: React.FC = () => {
       <PageSection variant={PageSectionVariants.light}>
         <Title headingLevel="h1">Upgrade Diagnostics</Title>
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 0, marginTop: 16, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ display: 'flex', gap: 0, marginTop: 16, borderBottom: `1px solid ${T.border}` }}>
           {(Object.keys(TAB_LABELS) as Tab[]).map(tab => {
             const active = activeTab === tab;
             return (
@@ -168,8 +180,8 @@ export const UpgradeDiagsPage: React.FC = () => {
                 style={{
                   background: 'none',
                   border: 'none',
-                  borderBottom: active ? '3px solid #73bcf7' : '3px solid transparent',
-                  color: active ? '#73bcf7' : 'rgba(255,255,255,0.6)',
+                  borderBottom: active ? `3px solid ${T.info}` : '3px solid transparent',
+                  color: active ? T.info : T.textSubtle,
                   cursor: 'pointer',
                   fontWeight: active ? 700 : 400,
                   fontSize: 14,
@@ -241,14 +253,14 @@ export const UpgradeDiagsPage: React.FC = () => {
                   const border      = resultBorder(pfc.status?.overallResult);
 
                   const rowBg = isExpanded
-                    ? 'rgba(255,255,255,0.05)'
+                    ? T.bgActive
                     : isHovered
-                    ? 'rgba(255,255,255,0.03)'
+                    ? T.bgSecondary
                     : 'transparent';
 
                   const tdStyle: React.CSSProperties = {
                     padding: '12px 16px',
-                    borderBottom: '1px solid rgba(255,255,255,0.07)',
+                    borderBottom: `1px solid ${T.border}`,
                     verticalAlign: 'middle',
                     background: rowBg,
                     transition: 'background 0.1s',
@@ -262,16 +274,16 @@ export const UpgradeDiagsPage: React.FC = () => {
                         onMouseEnter={() => setHoveredRow(name)}
                         onMouseLeave={() => setHoveredRow(null)}
                       >
-                        <td style={{ ...tdStyle, padding: '12px 8px', textAlign: 'center', color: 'rgba(255,255,255,0.4)' }}>
+                        <td style={{ ...tdStyle, padding: '12px 8px', textAlign: 'center', color: T.textMuted }}>
                           {isExpanded ? <CaretDownIcon /> : <CaretRightIcon />}
                         </td>
                         <td style={tdStyle}>
                           <div style={{ fontWeight: 600, fontSize: 15 }}>{pfc.spec.desired.version}</div>
-                          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 2 }}>
+                          <div style={{ fontSize: 12, color: T.textSubtle, marginTop: 2 }}>
                             {pfc.spec.desired.channel}
                           </div>
                           {description && (
-                            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 2, fontStyle: 'italic' }}>
+                            <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2, fontStyle: 'italic' }}>
                               {description}
                             </div>
                           )}
@@ -282,7 +294,7 @@ export const UpgradeDiagsPage: React.FC = () => {
                             : <Spinner size="sm" />}
                         </td>
                         <td style={tdStyle}><CheckSummary pfc={pfc} /></td>
-                        <td style={{ ...tdStyle, color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                        <td style={{ ...tdStyle, color: T.textMuted, fontSize: 13 }}>
                           {relativeTime(pfc.metadata?.creationTimestamp)}
                         </td>
                         <td
@@ -295,7 +307,7 @@ export const UpgradeDiagsPage: React.FC = () => {
                             title="Re-run with same settings"
                             onClick={() => handleRerun(pfc)}
                             isDisabled={isDeleting}
-                            style={{ color: 'rgba(255,255,255,0.5)' }}
+                            style={{ color: T.textSubtle }}
                           >
                             <SyncAltIcon />
                           </Button>
@@ -305,7 +317,7 @@ export const UpgradeDiagsPage: React.FC = () => {
                             title="Delete"
                             onClick={() => handleDelete(pfc)}
                             isDisabled={isDeleting}
-                            style={{ color: isDeleting ? 'rgba(255,255,255,0.3)' : '#c9190b' }}
+                            style={{ color: isDeleting ? T.textMuted : T.danger }}
                           >
                             {isDeleting ? <Spinner size="sm" /> : <TrashIcon />}
                           </Button>
@@ -318,9 +330,9 @@ export const UpgradeDiagsPage: React.FC = () => {
                             colSpan={6}
                             style={{
                               borderLeft: `4px solid ${border}`,
-                              borderBottom: '1px solid rgba(255,255,255,0.07)',
+                              borderBottom: `1px solid ${T.border}`,
                               padding: 0,
-                              background: 'rgba(255,255,255,0.02)',
+                              background: T.bgSecondary,
                             }}
                           >
                             <UpgradeDiagsDetail pfc={pfc} />
@@ -338,7 +350,7 @@ export const UpgradeDiagsPage: React.FC = () => {
                     style={{
                       padding: '12px 16px',
                       textAlign: 'center',
-                      borderTop: sorted.length > 0 ? '1px solid rgba(255,255,255,0.07)' : undefined,
+                      borderTop: sorted.length > 0 ? `1px solid ${T.border}` : undefined,
                     }}
                   >
                     {!createOpen ? (
@@ -350,7 +362,7 @@ export const UpgradeDiagsPage: React.FC = () => {
                         Run New Check
                       </Button>
                     ) : (
-                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                      <span style={{ color: T.textMuted, fontSize: 13 }}>
                         Fill in the form below to run a new check
                       </span>
                     )}
