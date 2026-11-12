@@ -8,6 +8,7 @@ import (
 	"github.com/go-logr/logr"
 	configv1 "github.com/openshift/api/config/v1"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
+	cv "github.com/openshift/managed-upgrade-operator/pkg/clusterversion"
 	"github.com/openshift/managed-upgrade-operator/util"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -96,7 +97,16 @@ func (c *adminAcksCheck) DefaultOwner() upgradev1alpha1.CheckOwner {
 }
 
 func (c *adminAcksCheck) Run(ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) CheckOutput {
-	isYStream := deps.DesiredVersion != ""
+	// Determine upgrade type by comparing current vs desired minor version.
+	// deps.DesiredVersion is always non-empty, so checking != "" is always true
+	// and incorrectly classifies z-stream upgrades as y-stream.
+	isYStream := true // conservative default
+	cvClient := deps.CvClientBuilder.New(deps.Client)
+	if clusterVersion, err := cvClient.GetClusterVersion(); err == nil {
+		if currentVersion, err := cv.GetCurrentVersion(clusterVersion); err == nil {
+			isYStream = classifyUpgradeType(currentVersion, deps.DesiredVersion, deps.DesiredChannel) != "z-stream"
+		}
+	}
 
 	cm := &corev1.ConfigMap{}
 	err := deps.Client.Get(ctx, types.NamespacedName{Namespace: "openshift-config", Name: "admin-acks"}, cm)
