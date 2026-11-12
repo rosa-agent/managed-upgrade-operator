@@ -1,10 +1,24 @@
 # MUO Agent Handoff — Full Context Restore
 
-**Date:** 2026-11-12  
-**Branch:** `maclark/check-pattern-refactor`  
+**Date:** 2026-11-12 (last updated by remote agent)
+**Branch:** `maclark/check-pattern-refactor`
+**Latest commit:** `9184f70`
 **Remote agent fork:** `rosa-agent/managed-upgrade-operator`  
 **Local agent fork:** `nephomaniac/managed-upgrade-operator`  
 **Upstream (read-only reference):** `openshift/managed-upgrade-operator`
+
+---
+
+## Recent Changes (since last deploy)
+
+| Commit | What changed |
+|--------|-------------|
+| `9184f70` | Gap A/B/C: `StuckDrainingNodes` check with per-pod root cause (PDB/finalizer/terminating), `unhealthyPodEvictionPolicy` surfaced in all PDB findings, `--disable-eviction` guidance (MCS-251) |
+| `2713fd5` | `namespacePlatformCache` — dynamic namespace owner classification via managedFields (Hive, addon-operator, etc.); replaces static prefix-only check in `StuckTerminatingPods` |
+| `048dc2c` | Gap 1: `PodDisruptionBudgetsDrainSafety` (MCS-252 four-case predicate); Gap 3: `UpgradeConfigConsistency` (UpgradeConfigSyncFailure detection) |
+| `800bb23` | 7 new checks from OHSS MCS-48 review: PausedMachineConfigPool, WorkerNodeReadiness, StuckTerminatingPods, PendingCSRs, InstalledOperatorMaxVersion, ConsolePluginReferences, ClusterAutoscalerConfig |
+
+**Check catalog: was 17, now 27.**
 
 ---
 
@@ -258,22 +272,54 @@ CVO upgrade history from `ClusterVersion.status.history`.
 
 ---
 
-## Registered Checks
+## Registered Checks (27 total as of commit 9184f70)
 
+### Upgrade eligibility
 | Check Name | What It Tests |
 |------------|---------------|
+| `ClusterVersion` | CVO ClusterVersion CR is accessible and parseable |
+| `UpgradeTarget` | Target version exists in available updates |
+| `UpgradeTargetExtended` | Detailed upgrade path: Cincinnati vs CVO cache, conditional risks |
+| `UpgradeInFlight` | No other upgrade already in progress |
+| `UpgradeableCondition` | CVO Upgradeable=True |
+| `AdminAcks` | All required admin-acks present |
+| `PullSecretValid` | pull-secret in openshift namespace is valid JSON |
+
+### Cluster health gates
+| Check Name | What It Tests |
+|------------|---------------|
+| `ClusterOperators` | All ClusterOperators show Available=True |
+| `ClusterOperatorsExtended` | Operator details with phase/elapsed timing |
 | `CriticalAlerts` | No critical alerts firing in core namespaces |
 | `CriticalAlertsExtended` | Detailed alert info with descriptions |
-| `ClusterOperatorsAvailable` | All ClusterOperators show Available=True |
-| `ClusterOperatorsAvailableExtended` | Operator details |
-| `UpgradeableCondition` | CVO Upgradeable=True |
-| `PullSecretValid` | pull-secret in openshift namespace is valid JSON |
-| `AdminAcks` | All required admin-acks present |
-| `PodDisruptionBudgets` | No PDBs that would block master/infra drain |
-| `PodDisruptionBudgetsExtended` | Full PDB details |
-| `UpgradeInFlight` | No other upgrade already in progress |
-| `UpgradeTarget` | Target version exists in available updates |
-| `UpgradeTargetExtended` | Target version details |
+
+### Node readiness
+| Check Name | What It Tests |
+|------------|---------------|
+| `WorkerNodeReadiness` | Worker nodes not in Ready state before upgrade (OHSS Case 10) |
+| `ManuallyCordonedNodes` | Nodes cordoned outside of an upgrade |
+| `ManuallyCordonedNodesExtended` | Details of cordoned nodes |
+| `NodeTaints` | Unexpected taints blocking scheduling |
+| `NodeTaintsExtended` | Full taint details |
+| `PendingCSRs` | Unapproved CertificateSigningRequests blocking new nodes (OHSS Case 3) |
+
+### Workload / drain blockers
+| Check Name | What It Tests |
+|------------|---------------|
+| `PodDisruptionBudgets` | MUO's HealthCheckPDB gate (DVO metrics + direct PDB check) |
+| `PodDisruptionBudgetsMasterInfraExtended` | PDBs covering running pods on master/infra nodes |
+| `PodDisruptionBudgetsDrainSafety` | Per-PDB currentHealthy/disruptionsAllowed/unhealthyPodEvictionPolicy — MCS-252 four-case safety predicate |
+| `StuckDrainingNodes` | Cordoned nodes with per-pod root cause: PDB block, finalizer hold, long Terminating (MCS-251/253) |
+| `StuckTerminatingPods` | Pods stuck Terminating >5min across all namespaces (OHSS Case 7) |
+
+### Configuration compatibility
+| Check Name | What It Tests |
+|------------|---------------|
+| `PausedMachineConfigPool` | MCPs with spec.paused=true blocking worker rollout (OHSS Case 3) |
+| `InstalledOperatorMaxVersion` | OLM CSVs with olm.maxOpenShiftVersion < target (OHSS Case 5) |
+| `ConsolePluginReferences` | ConsolePlugin CRs referencing non-existent Services (OHSS Case 5) |
+| `ClusterAutoscalerConfig` | Invalid utilizationThreshold or maxNodesTotal (OHSS Case 5) |
+| `UpgradeConfigConsistency` | MUO UpgradeConfig desired version vs CVO desired version — config sync failure detection (MCS-48 Case 9) |
 
 ---
 
@@ -387,7 +433,7 @@ sleep 2
 
 # Check catalog (no auth needed)
 curl -sk https://localhost:8443/api/v1/upgrade-diags/checks | jq '.total'
-# Expected: 12 (or however many registered checks)
+# Expected: 27
 
 # Create a diagnostics run
 curl -sk -X POST https://localhost:8443/api/v1/upgrade-diags \
