@@ -5,7 +5,7 @@ import { StatusBadge } from './StatusBadge';
 
 interface Props { pfc: UpgradeReadinessCheck; }
 
-const DESCRIPTION_ANNOTATION = 'preflight.managed.openshift.io/description';
+const DESCRIPTION_ANNOTATION = 'readiness.managed.openshift.io/description';
 
 const SEVERITY: Record<CheckResult, number> = {
   Error: 0, Failed: 1, Warning: 2, Unknown: 3, Passed: 4, Skipped: 5, TimedOut: 6,

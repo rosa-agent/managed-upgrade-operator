@@ -57,7 +57,7 @@ import (
 	muocfg "github.com/openshift/managed-upgrade-operator/config"
 	"github.com/openshift/managed-upgrade-operator/controllers/machineconfigpool"
 	"github.com/openshift/managed-upgrade-operator/controllers/nodekeeper"
-	"github.com/openshift/managed-upgrade-operator/controllers/preflight"
+	"github.com/openshift/managed-upgrade-operator/controllers/readiness"
 	"github.com/openshift/managed-upgrade-operator/controllers/upgradeconfig"
 	cv "github.com/openshift/managed-upgrade-operator/pkg/clusterversion"
 	"github.com/openshift/managed-upgrade-operator/pkg/collector"
@@ -116,6 +116,11 @@ func printVersion() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "readiness" {
+		runReadiness()
+		return
+	}
+
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -224,31 +229,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Once the UpgradeReadinessCheck controller is tested and proven stable in
-	// production, promote this to os.Exit(1) so that a startup failure causes the pod
-	// to restart and triggers on-call alerting, consistent with the other controllers.
-	// Until then the startup failure is intentionally non-fatal so a broken preflight
-	// controller cannot crash the operator or disrupt in-flight upgrades.
-	// Enable the controller at runtime (no restart needed) by adding "PreflightController"
-	// to featureGate.enabled in the managed-upgrade-operator-config ConfigMap.
-	if err = (&preflight.ReconcileUpgradeReadinessCheck{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		MetricsClientBuilder: metrics.NewBuilder(),
-		CvClientBuilder:      cv.NewBuilder(),
-		Machinery:            machinery.NewMachinery(),
-		ConfigManagerBuilder: configmanager.NewBuilder(),
-		DvoClientBuilder:     dvo.NewBuilder(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err,
-			"UpgradeReadinessCheck controller failed to start — on-demand preflight checks will be unavailable. "+
-				"Investigate the error above and fix the controller. "+
-				"Existing upgrade paths are not affected.",
-			"controller", "UpgradeReadinessCheck",
-		)
-		// Intentionally not os.Exit(1): this controller is experimental.
-	}
-
 	ctx := context.TODO()
 
 	// Get a config to talk to the apiserver
@@ -323,31 +303,116 @@ func main() {
 	log.Info("Starting UpgradeConfig manager")
 	go ucMgr.StartSync(stopCh)
 
-	// Start the preflight HTTP service (non-fatal: TLS certs may not be present yet).
-	// Accessible via the Kubernetes API server proxy without port-forwarding:
-	//   kubectl get --raw /api/v1/namespaces/openshift-managed-upgrade-operator/services/https:managed-upgrade-operator-preflight:8443/proxy/api/v1/preflight-checks
-	go func() {
-		// Recover any panic that escapes the HTTP service so a fault here cannot
-		// crash the controller-manager process or disrupt in-flight upgrades.
-		defer func() {
-			if p := recover(); p != nil {
-				setupLog.Error(fmt.Errorf("%v", p),
-					"panic in preflight HTTP service goroutine; HTTP API for preflight checks disabled")
-			}
-		}()
-		httpSrv := &preflight.PreflightHTTPServer{
-			Client:    mgr.GetClient(),
-			Namespace: operatorNS,
-			Logger:    setupLog.WithName("preflight-http"),
-		}
-		if err := httpSrv.Start(stopCh); err != nil {
-			setupLog.Info("Preflight HTTP service unavailable", "reason", err.Error())
-		}
-	}()
-
 	setupLog.Info("starting manager")
 	if err := mgr.Start(stopCh); err != nil {
 		setupLog.Error(err, "problem running manager")
+		os.Exit(1)
+	}
+}
+
+// runReadiness starts only the UpgradeReadinessCheck controller and HTTP API.
+// It is designed to run as a separate container in the MUO pod so that any fault
+// in the new readiness code (OOM, panic, bug) is fully isolated from the core
+// upgrade controller process.
+func runReadiness() {
+	opts := zap.Options{Development: true}
+	opts.BindFlags(flag.CommandLine)
+	// os.Args[1] is "readiness"; parse remaining args (if any) as flags.
+	if err := flag.CommandLine.Parse(os.Args[2:]); err != nil {
+		setupLog.Error(err, "failed to parse flags")
+		os.Exit(1)
+	}
+
+	configLog := uzap.NewProductionEncoderConfig()
+	configLog.EncodeTime = func(ts time.Time, encoder zapcore.PrimitiveArrayEncoder) {
+		encoder.AppendString(ts.UTC().Format(time.RFC3339Nano))
+	}
+	logfmtEncoder := zaplogfmt.NewEncoder(configLog)
+	logger := zap.New(zap.UseDevMode(true), zap.WriteTo(os.Stdout), zap.Encoder(logfmtEncoder))
+	logf.SetLogger(logger)
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	setupLog.Info("starting upgrade-readiness container")
+
+	operatorNS, err := k8sutil.GetWatchNamespace()
+	if err != nil {
+		setupLog.Error(err, "unable to determine operator namespace")
+		os.Exit(1)
+	}
+	if operatorNS == "" {
+		operatorNS = os.Getenv("OPERATOR_NAMESPACE")
+	}
+
+	syncPeriod := muocfg.SyncPeriodDefault
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				operatorNS: {},
+			},
+			SyncPeriod: &syncPeriod,
+		},
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
+		HealthProbeBindAddress:  ":8082",
+		LeaderElection:          true,
+		LeaderElectionID:        "managed-upgrade-operator-readiness-lock",
+		LeaderElectionNamespace: operatorNS,
+		NewClient: func(config *rest.Config, options client.Options) (client.Client, error) {
+			options.Cache = nil
+			return client.New(config, options)
+		},
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to start readiness manager")
+		os.Exit(1)
+	}
+
+	if err = (&readiness.ReconcileUpgradeReadinessCheck{
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		MetricsClientBuilder: metrics.NewBuilder(),
+		CvClientBuilder:      cv.NewBuilder(),
+		Machinery:            machinery.NewMachinery(),
+		ConfigManagerBuilder: configmanager.NewBuilder(),
+		DvoClientBuilder:     dvo.NewBuilder(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create UpgradeReadinessCheck controller")
+		os.Exit(1)
+	}
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up health check")
+		os.Exit(1)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
+
+	stopCh := signals.SetupSignalHandler()
+
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				setupLog.Error(fmt.Errorf("%v", p), "panic in readiness HTTP service; HTTP API disabled")
+			}
+		}()
+		httpSrv := &readiness.ReadinessHTTPServer{
+			Client:    mgr.GetClient(),
+			Namespace: operatorNS,
+			Logger:    setupLog.WithName("readiness-http"),
+		}
+		if err := httpSrv.Start(stopCh); err != nil {
+			setupLog.Info("Readiness HTTP service unavailable", "reason", err.Error())
+		}
+	}()
+
+	setupLog.Info("starting readiness manager")
+	if err := mgr.Start(stopCh); err != nil {
+		setupLog.Error(err, "problem running readiness manager")
 		os.Exit(1)
 	}
 }

@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"

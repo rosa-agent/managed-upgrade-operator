@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestPreflight(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Preflight Suite")
+	RunSpecs(t, "Readiness Suite")
 }

@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	"context"

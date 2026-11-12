@@ -8,7 +8,7 @@ import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@open
 
 // MUO's HTTP service creates the CR using the operator's service account,
 // bypassing the sre-regular-user-validation admission webhook.
-const PREFLIGHT_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/preflight-checks';
+const READINESS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/readiness-checks';
 
 interface ClusterVersion extends K8sResourceCommon {
   spec?: { channel?: string };
@@ -95,7 +95,7 @@ export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onC
     setSubmitting(true);
     setError(null);
     try {
-      await consoleFetch(PREFLIGHT_API, {
+      await consoleFetch(READINESS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +109,7 @@ export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onC
       onClose();
       onCreated();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to create preflight check');
+      setError(e instanceof Error ? e.message : 'Failed to create readiness check');
     } finally {
       setSubmitting(false);
     }

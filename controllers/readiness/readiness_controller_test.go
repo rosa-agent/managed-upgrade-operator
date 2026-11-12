@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	"context"
@@ -121,11 +121,11 @@ var _ = Describe("PreflightController", func() {
 	enableGate := func() {
 		mockConfigMgrBuilder.EXPECT().New(gomock.Any(), gomock.Any()).Return(mockConfigMgr)
 		mockConfigMgr.EXPECT().Into(gomock.Any()).DoAndReturn(func(cfg interface{}) error {
-			c, ok := cfg.(*preflightGateConfig)
+			c, ok := cfg.(*readinessGateConfig)
 			if !ok {
-				return fmt.Errorf("expected *preflightGateConfig, got %T", cfg)
+				return fmt.Errorf("expected *readinessGateConfig, got %T", cfg)
 			}
-			c.FeatureGate.Enabled = []string{preflightControllerFeatureGate}
+			c.FeatureGate.Enabled = []string{readinessControllerFeatureGate}
 			return nil
 		})
 	}

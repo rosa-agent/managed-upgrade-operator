@@ -7,7 +7,7 @@ import (
 // UpgradeReadinessCheckSpec defines the target upgrade to check readiness for.
 // It embeds UpgradeConfigSpec so that all UpgradeConfig fields (type, desired version,
 // PDBForceDrainTimeout, etc.) are inherited automatically. Fields like upgradeAt and
-// capacityReservation are present but unused by the preflight controller.
+// capacityReservation are present but unused by the readiness controller.
 type UpgradeReadinessCheckSpec struct {
 	UpgradeConfigSpec `json:",inline"`
 
@@ -56,7 +56,7 @@ const (
 	OwnerServiceTeam CheckOwner = "service-team"
 )
 
-// CheckResult is the top-level health verdict for a preflight check.
+// CheckResult is the top-level health verdict for a readiness check.
 // +kubebuilder:validation:Enum={"Passed","Warning","Failed","Error","Skipped","TimedOut","Unknown"}
 type CheckResult string
 
@@ -79,7 +79,7 @@ const (
 	CheckResultUnknown CheckResult = "Unknown"
 )
 
-// CheckExecution describes the runtime execution of a single preflight check.
+// CheckExecution describes the runtime execution of a single readiness check.
 type CheckExecution struct {
 	// State is whether the check machinery ran successfully: Completed, Error, or Skipped.
 	State CheckExecutionState `json:"state"`
@@ -114,7 +114,7 @@ type CheckExecution struct {
 	Error string `json:"error,omitempty"`
 }
 
-// ReadinessCheckResult holds the result and execution details for a single preflight check.
+// ReadinessCheckResult holds the result and execution details for a single readiness check.
 type ReadinessCheckResult struct {
 	// Name identifies the check (e.g. "CriticalAlerts", "ClusterOperators").
 	Name string `json:"name"`

@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	"context"
@@ -22,21 +22,21 @@ import (
 )
 
 const (
-	// preflightHTTPPort is the port the HTTP service listens on.
-	preflightHTTPPort = ":8443"
+	// readinessHTTPPort is the port the HTTP service listens on.
+	readinessHTTPPort = ":8443"
 
 	// requestIDLabel is placed on internal UpgradeReadinessCheck CRs so the HTTP
 	// service can find them by requestId without an in-memory map.
-	requestIDLabel = "preflight.managed.openshift.io/request-id"
+	requestIDLabel = "readiness.managed.openshift.io/request-id"
 
 	// tlsCertEnv / tlsKeyEnv allow overriding the cert paths (e.g. for local dev).
-	tlsCertEnv      = "PREFLIGHT_TLS_CERT"
-	tlsKeyEnv       = "PREFLIGHT_TLS_KEY"
-	defaultCertFile = "/etc/preflight-tls/tls.crt"
-	defaultKeyFile  = "/etc/preflight-tls/tls.key"
+	tlsCertEnv      = "READINESS_TLS_CERT"
+	tlsKeyEnv       = "READINESS_TLS_KEY"
+	defaultCertFile = "/etc/readiness-tls/tls.crt"
+	defaultKeyFile  = "/etc/readiness-tls/tls.key"
 )
 
-// CheckRequest is the body of POST /api/v1/preflight-checks.
+// CheckRequest is the body of POST /api/v1/readiness-checks.
 type CheckRequest struct {
 	TargetVersion       string   `json:"targetVersion"`
 	TargetChannel       string   `json:"targetChannel"`
@@ -51,7 +51,7 @@ type CheckRequest struct {
 	NamePrefix string `json:"namePrefix,omitempty"`
 }
 
-// CheckResponse is the body returned by GET /api/v1/preflight-checks/{id}.
+// CheckResponse is the body returned by GET /api/v1/readiness-checks/{id}.
 type CheckResponse struct {
 	RequestID       string        `json:"requestId"`
 	Status          string        `json:"status"`
@@ -82,42 +82,42 @@ type CheckResult struct {
 	Details []string `json:"details,omitempty"`
 }
 
-// PreflightHTTPServer serves the preflight check HTTP API.
+// PreflightHTTPServer serves the readiness check HTTP API.
 // It uses the operator's own service-account client to create internal
 // UpgradeReadinessCheck CRs (which the sre-regular-user-validation webhook
 // permits for the operator SA), while enforcing the caller's RBAC via
 // TokenReview + SubjectAccessReview before acting on their behalf.
-type PreflightHTTPServer struct {
+type ReadinessHTTPServer struct {
 	Client    client.Client
 	Namespace string
 	Logger    logr.Logger
 }
 
-// Start listens on preflightHTTPPort with TLS until ctx is cancelled.
+// Start listens on readinessHTTPPort with TLS until ctx is cancelled.
 // If TLS certificates are not present the server logs a warning and returns nil
-// (non-fatal: the operator continues without HTTP access to preflight checks).
-func (s *PreflightHTTPServer) Start(ctx context.Context) error {
+// (non-fatal: the operator continues without HTTP access to readiness checks).
+func (s *ReadinessHTTPServer) Start(ctx context.Context) error {
 	certFile := envOr(tlsCertEnv, defaultCertFile)
 	keyFile := envOr(tlsKeyEnv, defaultKeyFile)
 
 	if _, err := os.Stat(certFile); err != nil {
-		s.Logger.Info("Preflight HTTP service: TLS cert not found, HTTP service disabled",
+		s.Logger.Info("Readiness HTTP service: TLS cert not found, HTTP service disabled",
 			"cert", certFile, "hint", "annotate the Service with service.beta.openshift.io/serving-cert-secret-name")
 		return err
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return fmt.Errorf("preflight HTTP: loading TLS cert: %w", err)
+		return fmt.Errorf("readiness HTTP: loading TLS cert: %w", err)
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/preflight-checks", s.route)
-	mux.HandleFunc("/api/v1/preflight-checks/", s.route)
+	mux.HandleFunc("/api/v1/readiness-checks", s.route)
+	mux.HandleFunc("/api/v1/readiness-checks/", s.route)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	srv := &http.Server{
-		Addr:              preflightHTTPPort,
+		Addr:              readinessHTTPPort,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{
@@ -134,14 +134,14 @@ func (s *PreflightHTTPServer) Start(ctx context.Context) error {
 		_ = srv.Shutdown(shutCtx)
 	}(ctx)
 
-	s.Logger.Info("Starting preflight HTTP service", "addr", preflightHTTPPort)
+	s.Logger.Info("Starting readiness HTTP service", "addr", readinessHTTPPort)
 	if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("preflight HTTP server: %w", err)
+		return fmt.Errorf("readiness HTTP server: %w", err)
 	}
 	return nil
 }
 
-// CatalogEntry describes a single registered preflight check for the catalog endpoint.
+// CatalogEntry describes a single registered readiness check for the catalog endpoint.
 type CatalogEntry struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -150,20 +150,20 @@ type CatalogEntry struct {
 }
 
 // route dispatches based on method and path.
-func (s *PreflightHTTPServer) route(w http.ResponseWriter, r *http.Request) {
+func (s *ReadinessHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 	// Catch any panic in a handler so a nil-pointer or unexpected error in this
 	// controller cannot crash the net/http goroutine and take down the HTTP service.
 	// Go's net/http recovers handler panics too, but logs them to stderr; this gives
 	// us structured logging and a proper 500 response.
 	defer func() {
 		if p := recover(); p != nil {
-			s.Logger.Error(fmt.Errorf("%v", p), "panic in preflight HTTP handler; request aborted",
+			s.Logger.Error(fmt.Errorf("%v", p), "panic in readiness HTTP handler; request aborted",
 				"method", r.Method, "path", r.URL.Path)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 	}()
 
-	// /api/v1/preflight-checks/{id} has 5 slash-separated parts after trim
+	// /api/v1/readiness-checks/{id} has 5 slash-separated parts after trim
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 	requestID := ""
@@ -199,7 +199,7 @@ func (s *PreflightHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 
 // handleCatalog returns the list of registered checks with their names, descriptions,
 // default owners, and timeouts. No authentication required — this is schema metadata.
-func (s *PreflightHTTPServer) handleCatalog(w http.ResponseWriter) {
+func (s *ReadinessHTTPServer) handleCatalog(w http.ResponseWriter) {
 	entries := make([]CatalogEntry, 0, len(registeredChecks))
 	for _, c := range registeredChecks {
 		entry := CatalogEntry{
@@ -218,7 +218,7 @@ func (s *PreflightHTTPServer) handleCatalog(w http.ResponseWriter) {
 	})
 }
 
-func (s *PreflightHTTPServer) handleCreate(w http.ResponseWriter, r *http.Request, token string) {
+func (s *ReadinessHTTPServer) handleCreate(w http.ResponseWriter, r *http.Request, token string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "create"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -238,7 +238,7 @@ func (s *PreflightHTTPServer) handleCreate(w http.ResponseWriter, r *http.Reques
 	// Clean up expired checks before enforcing limit (opportunistic cleanup)
 	s.cleanupExpiredChecks(ctx)
 
-	// Enforce limit: max 2 active preflight checks at a time
+	// Enforce limit: max 2 active readiness checks at a time
 	if err := s.checkActiveLimit(ctx); err != nil {
 		http.Error(w, err.Error(), http.StatusTooManyRequests)
 		return
@@ -248,11 +248,11 @@ func (s *PreflightHTTPServer) handleCreate(w http.ResponseWriter, r *http.Reques
 	cr := s.buildInternalCR(requestID, req)
 	if err := s.Client.Create(ctx, cr); err != nil {
 		s.Logger.Error(err, "Failed to create UpgradeReadinessCheck", "requestId", requestID)
-		http.Error(w, "Internal error creating preflight check", http.StatusInternalServerError)
+		http.Error(w, "Internal error creating readiness check", http.StatusInternalServerError)
 		return
 	}
 
-	s.Logger.Info("Preflight check created via HTTP", "requestId", requestID, "crName", cr.Name)
+	s.Logger.Info("Readiness check created via HTTP", "requestId", requestID, "crName", cr.Name)
 
 	// Warn if feature gate is not enabled (checks won't run)
 	s.warnIfFeatureGateDisabled(ctx, requestID)
@@ -260,12 +260,12 @@ func (s *PreflightHTTPServer) handleCreate(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusAccepted, map[string]interface{}{
 		"requestId": requestID,
 		"status":    "accepted",
-		"statusUrl": fmt.Sprintf("/api/v1/preflight-checks/%s", requestID),
-		"message":   "Preflight check accepted",
+		"statusUrl": fmt.Sprintf("/api/v1/readiness-checks/%s", requestID),
+		"message":   "Readiness check accepted",
 	})
 }
 
-func (s *PreflightHTTPServer) handleGet(w http.ResponseWriter, r *http.Request, token, requestID string) {
+func (s *ReadinessHTTPServer) handleGet(w http.ResponseWriter, r *http.Request, token, requestID string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "get"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -279,7 +279,7 @@ func (s *PreflightHTTPServer) handleGet(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, buildResponse(requestID, cr))
 }
 
-func (s *PreflightHTTPServer) handleList(w http.ResponseWriter, r *http.Request, token string) {
+func (s *ReadinessHTTPServer) handleList(w http.ResponseWriter, r *http.Request, token string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "list"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -307,7 +307,7 @@ func (s *PreflightHTTPServer) handleList(w http.ResponseWriter, r *http.Request,
 	})
 }
 
-func (s *PreflightHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request, token, requestID string) {
+func (s *ReadinessHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request, token, requestID string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "delete"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -320,16 +320,16 @@ func (s *PreflightHTTPServer) handleDelete(w http.ResponseWriter, r *http.Reques
 	}
 	if err := s.Client.Delete(ctx, cr); err != nil {
 		s.Logger.Error(err, "Failed to delete UpgradeReadinessCheck", "requestId", requestID)
-		http.Error(w, "Internal error deleting preflight check", http.StatusInternalServerError)
+		http.Error(w, "Internal error deleting readiness check", http.StatusInternalServerError)
 		return
 	}
-	s.Logger.Info("Preflight check deleted via HTTP", "requestId", requestID, "crName", cr.Name)
+	s.Logger.Info("Readiness check deleted via HTTP", "requestId", requestID, "crName", cr.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// warnIfFeatureGateDisabled checks if the PreflightController feature gate is enabled
+// warnIfFeatureGateDisabled checks if the ReadinessController feature gate is enabled
 // and logs a warning if not, helping users debug why their checks aren't running.
-func (s *PreflightHTTPServer) warnIfFeatureGateDisabled(ctx context.Context, requestID string) {
+func (s *ReadinessHTTPServer) warnIfFeatureGateDisabled(ctx context.Context, requestID string) {
 	cm := &corev1.ConfigMap{}
 	if err := s.Client.Get(ctx, client.ObjectKey{
 		Namespace: s.Namespace,
@@ -354,22 +354,22 @@ func (s *PreflightHTTPServer) warnIfFeatureGateDisabled(ctx context.Context, req
 		return
 	}
 
-	// Check if PreflightController is enabled
+	// Check if ReadinessController is enabled
 	for _, f := range config.FeatureGate.Enabled {
-		if f == "PreflightController" {
+		if f == "ReadinessController" {
 			return // Feature gate enabled, all good
 		}
 	}
 
 	// Feature gate not enabled - warn user
-	s.Logger.Info("PreflightController feature gate not enabled - check will remain pending until enabled",
+	s.Logger.Info("ReadinessController feature gate not enabled - check will remain pending until enabled",
 		"requestId", requestID,
-		"help", "Add 'PreflightController' to featureGate.enabled in managed-upgrade-operator-config ConfigMap and restart the operator")
+		"help", "Add 'ReadinessController' to featureGate.enabled in managed-upgrade-operator-config ConfigMap and restart the operator")
 }
 
-// cleanupExpiredChecks deletes preflight checks that have passed their TTL.
+// cleanupExpiredChecks deletes readiness checks that have passed their TTL.
 // This runs opportunistically when new requests come in to avoid resource buildup.
-func (s *PreflightHTTPServer) cleanupExpiredChecks(ctx context.Context) {
+func (s *ReadinessHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
@@ -382,7 +382,7 @@ func (s *PreflightHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 	now := time.Now()
 	for i := range list.Items {
 		cr := &list.Items[i]
-		deleteAfter := cr.Annotations["preflight.managed.openshift.io/delete-after"]
+		deleteAfter := cr.Annotations["readiness.managed.openshift.io/delete-after"]
 		if deleteAfter == "" {
 			continue
 		}
@@ -395,15 +395,15 @@ func (s *PreflightHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 			if err := s.Client.Delete(ctx, cr); err != nil {
 				s.Logger.Error(err, "Failed to delete expired check", "crName", cr.Name)
 			} else {
-				s.Logger.Info("Deleted expired preflight check", "crName", cr.Name, "expiry", deleteAfter)
+				s.Logger.Info("Deleted expired readiness check", "crName", cr.Name, "expiry", deleteAfter)
 			}
 		}
 	}
 }
 
-// checkActiveLimit enforces a maximum of 10 active preflight checks to prevent resource exhaustion.
+// checkActiveLimit enforces a maximum of 10 active readiness checks to prevent resource exhaustion.
 // Returns an error with instructions if the limit is reached.
-func (s *PreflightHTTPServer) checkActiveLimit(ctx context.Context) error {
+func (s *ReadinessHTTPServer) checkActiveLimit(ctx context.Context) error {
 	const maxActiveChecks = 10
 	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
@@ -413,14 +413,14 @@ func (s *PreflightHTTPServer) checkActiveLimit(ctx context.Context) error {
 		return fmt.Errorf("internal error checking active checks: %w", err)
 	}
 	if len(list.Items) >= maxActiveChecks {
-		return fmt.Errorf("too many active preflight checks (%d/%d). List existing checks with GET /api/v1/preflight-checks and delete completed ones with DELETE /api/v1/preflight-checks/{id} before creating new checks", len(list.Items), maxActiveChecks)
+		return fmt.Errorf("too many active readiness checks (%d/%d). List existing checks with GET /api/v1/readiness-checks and delete completed ones with DELETE /api/v1/readiness-checks/{id} before creating new checks", len(list.Items), maxActiveChecks)
 	}
 	return nil
 }
 
 // authorizeToken performs TokenReview (authn) then SubjectAccessReview (authz).
 // verb should be "create", "get", "list", or "delete".
-func (s *PreflightHTTPServer) authorizeToken(ctx context.Context, token, verb string) error {
+func (s *ReadinessHTTPServer) authorizeToken(ctx context.Context, token, verb string) error {
 	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
 	if err := s.Client.Create(ctx, tr); err != nil {
 		return fmt.Errorf("token review: %w", err)
@@ -460,7 +460,7 @@ func (s *PreflightHTTPServer) authorizeToken(ctx context.Context, token, verb st
 	return nil
 }
 
-func (s *PreflightHTTPServer) findCR(ctx context.Context, requestID string) (*upgradev1alpha1.UpgradeReadinessCheck, error) {
+func (s *ReadinessHTTPServer) findCR(ctx context.Context, requestID string) (*upgradev1alpha1.UpgradeReadinessCheck, error) {
 	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
@@ -486,18 +486,18 @@ func crNamePrefix(raw string) string {
 	}
 	prefix := strings.Trim(b.String(), "-")
 	if prefix == "" {
-		prefix = "upgradediags"
+		prefix = "readiness"
 	}
 	return prefix + "-"
 }
 
-func (s *PreflightHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradeReadinessCheck {
+func (s *ReadinessHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradeReadinessCheck {
 	annotations := map[string]string{
 		// Auto-delete after 24 hours to prevent resource buildup
-		"preflight.managed.openshift.io/delete-after": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+		"readiness.managed.openshift.io/delete-after": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 	}
 	if req.Description != "" {
-		annotations["preflight.managed.openshift.io/description"] = req.Description
+		annotations["readiness.managed.openshift.io/description"] = req.Description
 	}
 	return &upgradev1alpha1.UpgradeReadinessCheck{
 		ObjectMeta: metav1.ObjectMeta{

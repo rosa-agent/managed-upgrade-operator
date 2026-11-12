@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	"context"
@@ -26,10 +26,10 @@ import (
 var log = logf.Log.WithName("controller_upgradereadinesscheck")
 
 const (
-	preflightControllerFeatureGate = "PreflightController"
+	readinessControllerFeatureGate = "ReadinessController"
 	maxReadinessChecks    = 10
-	preflightCheckTTL     = 24 * time.Hour
-	deleteAfterAnnotation = "preflight.managed.openshift.io/delete-after"
+	readinessCheckTTL     = 24 * time.Hour
+	deleteAfterAnnotation = "readiness.managed.openshift.io/delete-after"
 )
 
 // ocmOnlyChecks lists checks that require OCM API access and therefore cannot run
@@ -47,17 +47,17 @@ const (
 //     require the OCM API (ListGateAgreements).
 var _ = "ocmOnlyChecks — see comment above"
 
-type preflightGateConfig struct {
+type readinessGateConfig struct {
 	FeatureGate struct {
 		Enabled []string `yaml:"enabled"`
 	} `yaml:"featureGate"`
 }
 
-func (c *preflightGateConfig) IsValid() error { return nil }
+func (c *readinessGateConfig) IsValid() error { return nil }
 
-func (c *preflightGateConfig) isEnabled() bool {
+func (c *readinessGateConfig) isEnabled() bool {
 	for _, f := range c.FeatureGate.Enabled {
-		if f == preflightControllerFeatureGate {
+		if f == readinessControllerFeatureGate {
 			return true
 		}
 	}
@@ -84,7 +84,7 @@ func (r *ReconcileUpgradeReadinessCheck) pruneAndCount(ctx context.Context, name
 	remaining := 0
 	for i := range list.Items {
 		cr := &list.Items[i]
-		expired := cr.CreationTimestamp.Time.Add(preflightCheckTTL).Before(now)
+		expired := cr.CreationTimestamp.Time.Add(readinessCheckTTL).Before(now)
 		if ann := cr.Annotations[deleteAfterAnnotation]; ann != "" {
 			if t, err := time.Parse(time.RFC3339, ann); err == nil && t.Before(now) {
 				expired = true
@@ -107,7 +107,7 @@ func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reco
 
 	defer func() {
 		if p := recover(); p != nil {
-			logger.Error(fmt.Errorf("%v", p), "panic recovered in preflight reconcile")
+			logger.Error(fmt.Errorf("%v", p), "panic recovered in readiness reconcile")
 			result, err = reconcile.Result{}, nil
 		}
 	}()
@@ -117,9 +117,9 @@ func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reco
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	gateCfg := &preflightGateConfig{}
+	gateCfg := &readinessGateConfig{}
 	if err = r.ConfigManagerBuilder.New(r.Client, cmTarget).Into(gateCfg); err != nil {
-		logger.Info("Could not read MUO ConfigMap; preflight controller inactive", "error", err.Error())
+		logger.Info("Could not read MUO ConfigMap; readiness controller inactive", "error", err.Error())
 		return reconcile.Result{}, nil
 	}
 	if !gateCfg.isEnabled() {

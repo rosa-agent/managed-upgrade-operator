@@ -1,6 +1,6 @@
-package preflight
+package readiness
 
-// registeredChecks is the ordered list of preflight checks that run against the cluster.
+// registeredChecks is the ordered list of readiness checks that run against the cluster.
 //
 // To add a new check:
 //  1. Implement ReadinessCheck in the appropriate check_<group>.go file.

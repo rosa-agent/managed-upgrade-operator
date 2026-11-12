@@ -1,4 +1,4 @@
-package preflight
+package readiness
 
 import (
 	"context"
@@ -46,7 +46,7 @@ type CheckOutput struct {
 	Action string
 }
 
-// ReadinessCheck is the contract every preflight check must satisfy.
+// ReadinessCheck is the contract every readiness check must satisfy.
 //
 // To add a new check:
 //  1. Create a struct implementing this interface (add it to the appropriate

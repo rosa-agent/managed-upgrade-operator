@@ -41,9 +41,9 @@ spec:
             path: tls-ca-bundle.pem
           name: trusted-ca-bundle
         name: trusted-ca-bundle
-      - name: preflight-tls
+      - name: readiness-tls
         secret:
-          secretName: muo-preflight-tls
+          secretName: muo-readiness-tls
           optional: true
       containers:
       - name: managed-upgrade-operator
@@ -94,7 +94,33 @@ spec:
         - mountPath: /etc/pki/ca-trust/extracted/pem
           name: trusted-ca-bundle
           readOnly: true
-        - mountPath: /etc/preflight-tls
-          name: preflight-tls
+        terminationMessagePolicy: FallbackToLogsOnError
+      - name: upgrade-readiness
+        image: '{{ .config.image }}'
+        command:
+        - managed-upgrade-operator
+        args:
+        - readiness
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+            ephemeral-storage: 10Ki
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        env:
+        - name: WATCH_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: OPERATOR_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - mountPath: /etc/readiness-tls
+          name: readiness-tls
           readOnly: true
         terminationMessagePolicy: FallbackToLogsOnError

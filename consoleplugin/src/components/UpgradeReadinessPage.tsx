@@ -11,9 +11,9 @@ import { UpgradeReadinessDetail } from './UpgradeReadinessDetail';
 import { CreateReadinessCheckForm, type InitialValues } from './CreateReadinessCheckForm';
 
 const MUO_NS = 'openshift-managed-upgrade-operator';
-const REQUEST_ID_LABEL = 'preflight.managed.openshift.io/request-id';
-const DESCRIPTION_ANNOTATION = 'preflight.managed.openshift.io/description';
-const PROXY_BASE = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/preflight-checks';
+const REQUEST_ID_LABEL = 'readiness.managed.openshift.io/request-id';
+const DESCRIPTION_ANNOTATION = 'readiness.managed.openshift.io/description';
+const PROXY_BASE = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/readiness-checks';
 
 const relativeTime = (ts?: string): string => {
   if (!ts) return '—';
@@ -166,7 +166,7 @@ export const UpgradeReadinessPage: React.FC = () => {
         {loaded && !loadError && sorted.length === 0 && !createOpen && (
           <EmptyState>
             <EmptyStateBody>
-              Run preflight checks before upgrading to validate cluster readiness.
+              Run upgrade readiness checks to validate cluster readiness before upgrading.
             </EmptyStateBody>
             <Button variant="primary" onClick={() => openCreate()} style={{ marginTop: 16 }}>
               Run New Check
