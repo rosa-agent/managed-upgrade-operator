@@ -200,6 +200,31 @@ export const UpgradeDiagsPage: React.FC = () => {
         </div>
       </PageSection>
 
+      <PageSection variant={PageSectionVariants.light} style={{ paddingTop: 12, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+        {activeTab === 'checks' && (
+          <div style={{ fontSize: 13, color: T.textSubtle, maxWidth: 820, lineHeight: 1.6 }}>
+            <strong style={{ color: T.textSubtle }}>Diagnostics Checks</strong>
+            {' — '}
+            Run a read-only preflight analysis against a target version and channel before committing to an upgrade.
+            {' '}
+            <strong>No upgrade is triggered</strong> — checks only inspect current cluster state to identify potential roadblocks such as
+            unsatisfied admin acknowledgements, critical alerts, PodDisruptionBudgets that could stall node drains, and pull secret validity.
+            Use this to build confidence and surface remediation steps before scheduling a maintenance window.
+          </div>
+        )}
+        {activeTab === 'status' && (
+          <div style={{ fontSize: 13, color: T.textSubtle, maxWidth: 820, lineHeight: 1.6 }}>
+            <strong style={{ color: T.textSubtle }}>Upgrade Status</strong>
+            {' — '}
+            Live snapshot of an in-progress or recently completed cluster upgrade.
+            {' '}
+            Tracks ClusterVersion, ClusterOperator, MachineConfigPool, and node progression in real time.
+            Click any operator row to inspect its full condition set; click any node row to see PDB drain blockers,
+            cloud-provider errors, and K8s node conditions with actionable remediation guidance.
+          </div>
+        )}
+      </PageSection>
+
       <PageSection>
         {activeTab === 'status' && <UpgradeStatusView />}
         {activeTab === 'checks' && (<>

@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { Alert, Button, Spinner } from '@patternfly/react-core';
 import { SyncAltIcon, CaretDownIcon, CaretRightIcon } from '@patternfly/react-icons';
-import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
+import { consoleFetch, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
+import { type UpgradeDiagsCheck } from '../types';
 
 const STATUS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-status';
 const POLL_INTERVAL_MS = 30_000;
+const MUO_NS = 'openshift-managed-upgrade-operator';
 
 // PF semantic design tokens — single source of truth for all colors in this file.
 const T = {
@@ -46,6 +48,14 @@ interface ProviderError {
   since?: string;
 }
 
+interface NodeCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  since?: string;
+}
+
 interface NodeStatus {
   name: string;
   phase: string;
@@ -55,6 +65,7 @@ interface NodeStatus {
   elapsedSeconds?: number;
   drainBlockers?: DrainBlocker[];
   providerErrors?: ProviderError[];
+  conditions?: NodeCondition[];
 }
 
 interface MachinePoolStatus {
@@ -71,6 +82,14 @@ interface MachinePoolStatus {
   nodes?: NodeStatus[];
 }
 
+interface OperatorCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  since?: string;
+}
+
 interface OperatorStatus {
   name: string;
   phase: string;
@@ -81,6 +100,7 @@ interface OperatorStatus {
   message?: string;
   progressingSince?: string;
   elapsedInPhaseSeconds?: number;
+  conditions?: OperatorCondition[];
 }
 
 interface OperatorsStatus {
@@ -196,7 +216,12 @@ const SectionHeader: React.FC<{ title: string; badge?: React.ReactNode; meta?: s
 
 // ---- Operators table -------------------------------------------------------
 
+const fmtTime = (ts?: string) => ts ? new Date(ts).toLocaleString() : '—';
+
 const OperatorsTable: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
+  const toggle = (name: string) => setExpanded(prev => ({ ...prev, [name]: !prev[name] }));
+
   const sorted = [...ops.operators].sort((a, b) => {
     const rank = (o: OperatorStatus) => o.degraded ? 0 : o.progressing ? 1 : 2;
     return rank(a) - rank(b);
@@ -205,16 +230,21 @@ const OperatorsTable: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
   const th: React.CSSProperties = {
     padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.05em',
-    color: 'var(--pf-t--global--color--text--subtle)',
+    color: T.textSubtle,
     borderBottom: `1px solid ${T.border}`,
-    background: 'var(--pf-t--global--color--text--subtle)',
+    background: T.bgSecondary,
     whiteSpace: 'nowrap',
+  };
+
+  const condTh: React.CSSProperties = {
+    ...th, background: T.dangerBg, fontSize: 10, padding: '5px 10px',
   };
 
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
       <thead>
         <tr>
+          <th style={{ ...th, width: 28, padding: '8px 6px' }} />
           <th style={th}>Operator</th>
           <th style={th}>Version</th>
           <th style={th}>Phase</th>
@@ -225,25 +255,335 @@ const OperatorsTable: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
       <tbody>
         {sorted.map((op) => {
           const color = phaseColor(op.phase);
+          const isExpanded = !!expanded[op.name];
+          const hasConditions = (op.conditions?.length ?? 0) > 0;
           const tdStyle: React.CSSProperties = {
             padding: '8px 12px',
-            borderBottom: `1px solid ${T.border}`,
+            borderBottom: isExpanded ? 'none' : `1px solid ${T.border}`,
             verticalAlign: 'top',
           };
           return (
-            <tr key={op.name} style={{ borderLeft: op.degraded || op.progressing ? `3px solid ${color}` : '3px solid transparent' }}>
-              <td style={{ ...tdStyle, fontWeight: op.degraded || op.progressing ? 600 : 400 }}>{op.name}</td>
-              <td style={{ ...tdStyle, color: 'var(--pf-t--global--color--text--subtle)', fontFamily: 'monospace', fontSize: 12 }}>
-                {op.version ?? '—'}
-              </td>
-              <td style={tdStyle}><PhaseBadge phase={op.phase} /></td>
-              <td style={{ ...tdStyle, color: 'var(--pf-t--global--color--text--subtle)', whiteSpace: 'nowrap' }}>
-                {fmtElapsed(op.elapsedInPhaseSeconds)}
-              </td>
-              <td style={{ ...tdStyle, color: 'var(--pf-t--global--color--text--subtle)', fontSize: 12, wordBreak: 'break-word' }}>
-                {op.message ?? '—'}
-              </td>
-            </tr>
+            <React.Fragment key={op.name}>
+              <tr
+                onClick={() => hasConditions && toggle(op.name)}
+                style={{
+                  borderLeft: op.degraded || op.progressing ? `3px solid ${color}` : '3px solid transparent',
+                  cursor: hasConditions ? 'pointer' : 'default',
+                }}
+              >
+                <td style={{ ...tdStyle, padding: '8px 6px', textAlign: 'center', color: T.textMuted, fontSize: 11 }}>
+                  {hasConditions ? (isExpanded ? '▾' : '▸') : ''}
+                </td>
+                <td style={{ ...tdStyle, fontWeight: op.degraded || op.progressing ? 600 : 400 }}>{op.name}</td>
+                <td style={{ ...tdStyle, color: T.textSubtle, fontFamily: 'monospace', fontSize: 12 }}>
+                  {op.version ?? '—'}
+                </td>
+                <td style={tdStyle}><PhaseBadge phase={op.phase} /></td>
+                <td style={{ ...tdStyle, color: T.textSubtle, whiteSpace: 'nowrap' }}>
+                  {fmtElapsed(op.elapsedInPhaseSeconds)}
+                </td>
+                <td style={{ ...tdStyle, color: T.textSubtle, fontSize: 12, wordBreak: 'break-word' }}>
+                  {op.message ?? '—'}
+                </td>
+              </tr>
+
+              {isExpanded && hasConditions && (
+                <tr style={{ borderLeft: `3px solid ${color}`, borderBottom: `1px solid ${T.border}` }}>
+                  <td colSpan={6} style={{ padding: '0 0 0 28px', background: T.bgSecondary }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                      <thead>
+                        <tr>
+                          <th style={condTh}>Condition</th>
+                          <th style={condTh}>Status</th>
+                          <th style={condTh}>Reason</th>
+                          <th style={condTh}>Since</th>
+                          <th style={{ ...condTh, width: '45%' }}>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {op.conditions!.map((c, i) => {
+                          const isUnhealthy = c.status === 'False' && ['Available'].includes(c.type)
+                            || c.status === 'True' && ['Progressing', 'Degraded'].includes(c.type);
+                          return (
+                            <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : `${T.border}18` }}>
+                              <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.border}`, fontWeight: isUnhealthy ? 700 : 400, color: isUnhealthy ? color : undefined }}>
+                                {c.type}
+                              </td>
+                              <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.border}`, color: isUnhealthy ? color : T.textSubtle }}>
+                                {c.status}
+                              </td>
+                              <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.border}`, color: T.textSubtle, fontFamily: 'monospace', fontSize: 11 }}>
+                                {c.reason ?? '—'}
+                              </td>
+                              <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.border}`, color: T.textMuted, whiteSpace: 'nowrap' }}>
+                                {fmtTime(c.since)}
+                              </td>
+                              <td style={{ padding: '5px 10px', borderBottom: `1px solid ${T.border}`, color: T.textSubtle, wordBreak: 'break-word' }}>
+                                {c.message || '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+};
+
+// ---- Node table with drill-down -------------------------------------------
+
+const pdbRemediation = (db: DrainBlocker): string => {
+  if (db.disruptionsAllowed === 0) {
+    return `PDB "${db.pdbName}" allows 0 disruptions. Scale up ${db.owner ? `"${db.owner}"` : 'the workload'} to at least ${db.desiredHealthy + 1} replicas, or temporarily increase MaxUnavailable / decrease MinAvailable.`;
+  }
+  return `PDB "${db.pdbName}" requires ${db.desiredHealthy} healthy pods but only ${db.currentHealthy} are ready. Wait for pods to recover or adjust the PDB.`;
+};
+
+const providerRemediation = (pe: ProviderError): string => {
+  const reason = (pe.reason ?? '').toLowerCase();
+  const msg    = pe.message.toLowerCase();
+  if (reason.includes('iam') || msg.includes('iam') || msg.includes('unauthorized') || msg.includes('access denied')) {
+    return 'Check IAM roles and instance profiles. The node may lack permissions to call EC2/EKS APIs.';
+  }
+  if (reason.includes('capacity') || msg.includes('capacity') || msg.includes('insufficient')) {
+    return 'Instance capacity unavailable in this zone. Try a different availability zone or instance type.';
+  }
+  if (reason.includes('quota') || msg.includes('quota') || msg.includes('limit exceeded')) {
+    return 'AWS quota exceeded. Request a limit increase via Service Quotas or free up resources.';
+  }
+  if (msg.includes('network') || msg.includes('vpc') || msg.includes('subnet') || msg.includes('security group')) {
+    return 'Network configuration issue. Check VPC, subnets, security groups, and route tables.';
+  }
+  if (msg.includes('pull') || msg.includes('image') || msg.includes('registry')) {
+    return 'Image pull failure. Verify pull secret validity and registry reachability from this node.';
+  }
+  if (msg.includes('disk') || msg.includes('storage') || msg.includes('volume') || msg.includes('ebs')) {
+    return 'Storage issue. Check EBS volume limits, disk pressure, and persistent volume claims.';
+  }
+  return 'Review cloud provider logs or the Machine object for additional details.';
+};
+
+const NodeDetailPanel: React.FC<{ node: NodeStatus; borderColor: string }> = ({ node, borderColor }) => {
+  const hasBlockers       = (node.drainBlockers?.length ?? 0) > 0;
+  const hasProviderErrors = (node.providerErrors?.length ?? 0) > 0;
+  const hasConditions     = (node.conditions?.length ?? 0) > 0;
+
+  const sectionTitle: React.CSSProperties = {
+    fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.07em',
+    color: T.textSubtle, marginBottom: 6, marginTop: 10,
+  };
+
+  return (
+    <div style={{ padding: '10px 12px 12px 20px', background: T.bgSecondary, fontSize: 12 }}>
+
+      {/* PDB drain blockers */}
+      {hasBlockers && (
+        <>
+          <div style={sectionTitle}>PDB Drain Blockers</div>
+          {node.drainBlockers!.map((db, i) => (
+            <div key={i} style={{
+              marginBottom: 8, padding: '8px 12px',
+              background: T.dangerBg,
+              borderLeft: `3px solid ${T.danger}`,
+              borderRadius: T.radiusSm,
+            }}>
+              <div style={{ fontWeight: 600, color: T.danger, marginBottom: 4 }}>
+                {db.podNamespace}/{db.pdbName}
+                {db.owner && <span style={{ fontWeight: 400, color: T.textSubtle, marginLeft: 8 }}>via {db.owner}</span>}
+              </div>
+              <div style={{ color: T.textSubtle, marginBottom: 4 }}>
+                disruptions allowed: <strong>{db.disruptionsAllowed}</strong>
+                {' · '}healthy: <strong>{db.currentHealthy}/{db.desiredHealthy}</strong>
+                {db.violation && <span style={{ marginLeft: 8, fontFamily: 'monospace', color: T.danger }}>[{db.violation}]</span>}
+              </div>
+              <div style={{ color: T.warning, fontStyle: 'italic' }}>
+                ⚑ {pdbRemediation(db)}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* Provider / cloud errors */}
+      {hasProviderErrors && (
+        <>
+          <div style={sectionTitle}>Cloud Provider Errors</div>
+          {node.providerErrors!.map((pe, i) => (
+            <div key={i} style={{
+              marginBottom: 8, padding: '8px 12px',
+              background: T.warningBg,
+              borderLeft: `3px solid ${T.warning}`,
+              borderRadius: T.radiusSm,
+            }}>
+              <div style={{ fontWeight: 600, color: T.warning, marginBottom: 4 }}>
+                {pe.source}{pe.reason ? ` / ${pe.reason}` : ''}
+              </div>
+              <div style={{ color: T.textSubtle, marginBottom: 4 }}>{pe.message}</div>
+              <div style={{ color: T.warning, fontStyle: 'italic' }}>
+                ⚑ {providerRemediation(pe)}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* K8s node conditions */}
+      {hasConditions && (
+        <>
+          <div style={sectionTitle}>Node Conditions</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr>
+                {['Condition', 'Status', 'Reason', 'Since', 'Message'].map(h => (
+                  <th key={h} style={{
+                    padding: '4px 8px', textAlign: 'left', fontWeight: 600,
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                    color: T.textSubtle, borderBottom: `1px solid ${T.border}`,
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {node.conditions!.map((c, i) => {
+                const isUnhealthy = (c.type === 'Ready' && c.status !== 'True')
+                  || (c.type !== 'Ready' && c.status === 'True' && ['MemoryPressure','DiskPressure','PIDPressure','NetworkUnavailable'].includes(c.type));
+                return (
+                  <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : `${T.border}18` }}>
+                    <td style={{ padding: '4px 8px', borderBottom: `1px solid ${T.border}`, fontWeight: isUnhealthy ? 700 : 400, color: isUnhealthy ? borderColor : undefined }}>
+                      {c.type}
+                    </td>
+                    <td style={{ padding: '4px 8px', borderBottom: `1px solid ${T.border}`, color: isUnhealthy ? borderColor : T.textSubtle }}>
+                      {c.status}
+                    </td>
+                    <td style={{ padding: '4px 8px', borderBottom: `1px solid ${T.border}`, color: T.textSubtle, fontFamily: 'monospace' }}>
+                      {c.reason ?? '—'}
+                    </td>
+                    <td style={{ padding: '4px 8px', borderBottom: `1px solid ${T.border}`, color: T.textMuted, whiteSpace: 'nowrap' }}>
+                      {fmtTime(c.since)}
+                    </td>
+                    <td style={{ padding: '4px 8px', borderBottom: `1px solid ${T.border}`, color: T.textSubtle, wordBreak: 'break-word' }}>
+                      {c.message || '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {!hasBlockers && !hasProviderErrors && !hasConditions && (
+        <div style={{ color: T.textMuted }}>No additional details available.</div>
+      )}
+    </div>
+  );
+};
+
+const NodeTable: React.FC<{ nodes: NodeStatus[] }> = ({ nodes }) => {
+  const [expandedNodes, setExpandedNodes] = React.useState<Record<string, boolean>>({});
+  const toggleNode = (name: string) => setExpandedNodes(prev => ({ ...prev, [name]: !prev[name] }));
+
+  const th: React.CSSProperties = {
+    padding: '6px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    color: T.textSubtle,
+    borderBottom: `1px solid ${T.border}`,
+    background: T.bgSecondary,
+  };
+
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+      <colgroup>
+        <col style={{ width: 28 }} />
+        <col style={{ width: '28%' }} />
+        <col style={{ width: 90 }} />
+        <col style={{ width: 90 }} />
+        <col style={{ width: 90 }} />
+        <col />
+      </colgroup>
+      <thead>
+        <tr>
+          <th style={{ ...th, padding: '6px 4px' }} />
+          <th style={th}>Node</th>
+          <th style={th}>Phase</th>
+          <th style={th}>Config</th>
+          <th style={th}>Elapsed</th>
+          <th style={th}>Issues</th>
+        </tr>
+      </thead>
+      <tbody>
+        {nodes.map(node => {
+          const nc = phaseColor(node.phase);
+          const configMatch = node.currentConfig === node.desiredConfig;
+          const hasBlockers = (node.drainBlockers?.length ?? 0) > 0;
+          const hasProviderErrors = (node.providerErrors?.length ?? 0) > 0;
+          const hasConditions = (node.conditions?.length ?? 0) > 0;
+          const hasIssues = hasBlockers || hasProviderErrors;
+          const hasDetail = hasBlockers || hasProviderErrors || hasConditions;
+          const isExpanded = !!expandedNodes[node.name];
+          const tdBase: React.CSSProperties = {
+            padding: '7px 10px',
+            borderBottom: isExpanded ? 'none' : `1px solid ${T.border}`,
+            verticalAlign: 'top',
+          };
+
+          return (
+            <React.Fragment key={node.name}>
+              <tr
+                onClick={() => hasDetail && toggleNode(node.name)}
+                style={{
+                  borderLeft: hasIssues ? `3px solid ${nc}` : '3px solid transparent',
+                  cursor: hasDetail ? 'pointer' : 'default',
+                }}
+              >
+                <td style={{ ...tdBase, padding: '7px 4px', textAlign: 'center', color: T.textMuted, fontSize: 11 }}>
+                  {hasDetail ? (isExpanded ? '▾' : '▸') : ''}
+                </td>
+                <td style={{ ...tdBase, fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                  {node.name}
+                </td>
+                <td style={tdBase}><PhaseBadge phase={node.phase} /></td>
+                <td style={tdBase}>
+                  {configMatch
+                    ? <span style={{ color: T.success }}>✓ current</span>
+                    : <span style={{ color: nc, fontFamily: 'monospace', fontSize: 11 }}>
+                        →{(node.desiredConfig ?? '').slice(-8)}
+                      </span>
+                  }
+                </td>
+                <td style={{ ...tdBase, color: T.textSubtle, whiteSpace: 'nowrap' }}>
+                  {fmtElapsed(node.elapsedSeconds)}
+                </td>
+                <td style={tdBase}>
+                  {hasBlockers && (
+                    <span style={{ color: T.danger, fontWeight: 600 }}>
+                      {node.drainBlockers!.length} PDB blocker{node.drainBlockers!.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {hasProviderErrors && (
+                    <span style={{ color: T.warning, fontWeight: 600, marginLeft: hasBlockers ? 8 : 0 }}>
+                      {node.providerErrors!.length} provider error{node.providerErrors!.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {!hasIssues && <span style={{ color: T.textSubtle }}>—</span>}
+                </td>
+              </tr>
+
+              {isExpanded && (
+                <tr style={{ borderLeft: `3px solid ${nc}`, borderBottom: `1px solid ${T.border}` }}>
+                  <td colSpan={6} style={{ padding: 0 }}>
+                    <NodeDetailPanel node={node} borderColor={nc} />
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
           );
         })}
       </tbody>
@@ -264,14 +604,6 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
     borderRadius: T.radiusMd,
     border: `1px solid ${highlight ? color + '55' : 'var(--pf-t--global--color--text--subtle)'}`,
   });
-
-  const th: React.CSSProperties = {
-    padding: '6px 10px', textAlign: 'left', fontSize: 11, fontWeight: 600,
-    textTransform: 'uppercase', letterSpacing: '0.05em',
-    color: 'var(--pf-t--global--color--text--subtle)',
-    borderBottom: `1px solid ${T.border}`,
-    background: 'var(--pf-t--global--color--text--subtle)',
-  };
 
   return (
     <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radiusMd, overflow: 'hidden', marginBottom: 12 }}>
@@ -329,104 +661,7 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
 
       {/* Node table */}
       {expanded && pool.nodes && pool.nodes.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <colgroup>
-            <col style={{ width: '28%' }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 90 }} />
-            <col />
-          </colgroup>
-          <thead>
-            <tr>
-              <th style={th}>Node</th>
-              <th style={th}>Phase</th>
-              <th style={th}>Config</th>
-              <th style={th}>Elapsed</th>
-              <th style={th}>Issues</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pool.nodes.map(node => {
-              const nc = phaseColor(node.phase);
-              const configMatch = node.currentConfig === node.desiredConfig;
-              const hasBlockers = (node.drainBlockers?.length ?? 0) > 0;
-              const hasProviderErrors = (node.providerErrors?.length ?? 0) > 0;
-              const hasIssues = hasBlockers || hasProviderErrors;
-              const tdBase: React.CSSProperties = {
-                padding: '7px 10px',
-                borderBottom: `1px solid ${T.border}`,
-                verticalAlign: 'top',
-              };
-              return (
-                <React.Fragment key={node.name}>
-                  <tr style={{ borderLeft: hasIssues ? `3px solid ${nc}` : '3px solid transparent' }}>
-                    <td style={{ ...tdBase, fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
-                      {node.name}
-                    </td>
-                    <td style={tdBase}><PhaseBadge phase={node.phase} /></td>
-                    <td style={tdBase}>
-                      {configMatch
-                        ? <span style={{ color: T.success }}>✓ current</span>
-                        : <span style={{ color: nc, fontFamily: 'monospace', fontSize: 11 }}>
-                            →{(node.desiredConfig ?? '').slice(-8)}
-                          </span>
-                      }
-                    </td>
-                    <td style={{ ...tdBase, color: 'var(--pf-t--global--color--text--subtle)', whiteSpace: 'nowrap' }}>
-                      {fmtElapsed(node.elapsedSeconds)}
-                    </td>
-                    <td style={tdBase}>
-                      {hasBlockers && (
-                        <span style={{ color: T.danger, fontWeight: 600 }}>
-                          {node.drainBlockers!.length} PDB blocker{node.drainBlockers!.length > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {hasProviderErrors && (
-                        <span style={{ color: T.warning, fontWeight: 600, marginLeft: hasBlockers ? 8 : 0 }}>
-                          {node.providerErrors!.length} provider error{node.providerErrors!.length > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {!hasIssues && <span style={{ color: 'var(--pf-t--global--color--text--subtle)' }}>—</span>}
-                    </td>
-                  </tr>
-
-                  {/* PDB drain blockers — one sub-row per blocker */}
-                  {hasBlockers && node.drainBlockers!.map((db, i) => (
-                    <tr key={`db-${i}`} style={{ background: T.dangerBg }}>
-                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: `1px solid ${T.border}`, fontSize: 11 }}>
-                        <span style={{ color: T.danger, fontWeight: 700 }}>PDB block: </span>
-                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)', fontFamily: 'monospace' }}>
-                          {db.podNamespace}/{db.pdbName}
-                        </span>
-                        {db.owner && (
-                          <span style={{ color: 'var(--pf-t--global--color--text--subtle)', marginLeft: 8 }}>owner: {db.owner}</span>
-                        )}
-                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)', marginLeft: 8 }}>
-                          disruptions allowed: {db.disruptionsAllowed} · healthy: {db.currentHealthy}/{db.desiredHealthy}
-                        </span>
-                        {db.violation && (
-                          <span style={{ marginLeft: 8, color: T.danger, fontFamily: 'monospace' }}>[{db.violation}]</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-
-                  {/* Provider / cloud errors — one sub-row per error */}
-                  {hasProviderErrors && node.providerErrors!.map((pe, i) => (
-                    <tr key={`pe-${i}`} style={{ background: T.warningBg }}>
-                      <td colSpan={5} style={{ padding: '5px 10px 5px 24px', borderBottom: `1px solid ${T.border}`, fontSize: 11 }}>
-                        <span style={{ color: T.warning, fontWeight: 700 }}>
-                          {pe.source}{pe.reason ? ` / ${pe.reason}` : ''}: </span>
-                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)' }}>{pe.message}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+        <NodeTable nodes={pool.nodes} />
       )}
     </div>
   );
@@ -494,6 +729,22 @@ export const UpgradeStatusView: React.FC = () => {
   const [error, setError]           = React.useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
+
+  // Watch the latest UpgradeDiagsCheck CR to surface preflight issues here.
+  const [diagsChecks] = useK8sWatchResource<UpgradeDiagsCheck[]>({
+    groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradeDiagsCheck' },
+    namespace: MUO_NS,
+    isList: true,
+  });
+  const latestDiagsCheck = React.useMemo(() => {
+    if (!Array.isArray(diagsChecks) || diagsChecks.length === 0) return null;
+    return [...diagsChecks].sort((a, b) =>
+      (b.metadata?.creationTimestamp ?? '').localeCompare(a.metadata?.creationTimestamp ?? '')
+    )[0];
+  }, [diagsChecks]);
+  const preflightIssues = latestDiagsCheck?.status?.checks?.filter(
+    c => c.result === 'Failed' || c.result === 'Error' || c.result === 'Warning'
+  ) ?? [];
 
   const fetchStatus = React.useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -654,6 +905,37 @@ export const UpgradeStatusView: React.FC = () => {
                 ))}
               </ul>
             </Alert>
+          )}
+
+          {/* ---- Preflight cross-link banner ---- */}
+          {preflightIssues.length > 0 && latestDiagsCheck && (
+            <div style={{
+              marginBottom: 20, padding: '10px 16px',
+              background: preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error') ? T.dangerBg : T.warningBg,
+              borderLeft: `4px solid ${preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error') ? T.danger : T.warning}`,
+              borderRadius: T.radiusSm,
+              display: 'flex', alignItems: 'flex-start', gap: 12,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  fontWeight: 700, fontSize: 13,
+                  color: preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error') ? T.danger : T.warning,
+                  marginBottom: 4,
+                }}>
+                  {preflightIssues.filter(c => c.result === 'Failed' || c.result === 'Error').length > 0
+                    ? `Preflight check failures may be contributing to upgrade issues`
+                    : `Preflight check warnings detected`}
+                </div>
+                <div style={{ fontSize: 12, color: T.textSubtle }}>
+                  {preflightIssues.map(c => c.name.replace(/([a-z])([A-Z])/g, '$1 $2')).join(', ')}
+                  {' — from check run for '}
+                  <strong>{latestDiagsCheck.spec?.desired?.version}</strong>
+                  {'. See the '}
+                  <strong>Diagnostics Checks</strong>
+                  {' tab for details and remediation steps.'}
+                </div>
+              </div>
+            </div>
           )}
 
           {/* ---- Cluster Operators (collapsed by default) ---- */}

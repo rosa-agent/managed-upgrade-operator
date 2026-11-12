@@ -62,6 +62,14 @@ type OperatorsStatus struct {
 	Operators      []OperatorStatus `json:"operators"`
 }
 
+type OperatorCondition struct {
+	Type    string       `json:"type"`
+	Status  string       `json:"status"`
+	Reason  string       `json:"reason,omitempty"`
+	Message string       `json:"message,omitempty"`
+	Since   *metav1.Time `json:"since,omitempty"`
+}
+
 type OperatorStatus struct {
 	Name        string `json:"name"`
 	// Phase: available, progressing, degraded.
@@ -71,9 +79,10 @@ type OperatorStatus struct {
 	Progressing bool   `json:"progressing"`
 	Degraded    bool   `json:"degraded"`
 	// Message is the most relevant condition message (Progressing or Degraded).
-	Message               string       `json:"message,omitempty"`
-	ProgressingSince      *metav1.Time `json:"progressingSince,omitempty"`
-	ElapsedInPhaseSeconds int64        `json:"elapsedInPhaseSeconds,omitempty"`
+	Message               string               `json:"message,omitempty"`
+	ProgressingSince      *metav1.Time         `json:"progressingSince,omitempty"`
+	ElapsedInPhaseSeconds int64                `json:"elapsedInPhaseSeconds,omitempty"`
+	Conditions            []OperatorCondition  `json:"conditions,omitempty"`
 }
 
 type MachinePoolStatus struct {
@@ -116,6 +125,14 @@ type ProviderError struct {
 	Since   *metav1.Time `json:"since,omitempty"`
 }
 
+type NodeCondition struct {
+	Type    string       `json:"type"`
+	Status  string       `json:"status"`
+	Reason  string       `json:"reason,omitempty"`
+	Message string       `json:"message,omitempty"`
+	Since   *metav1.Time `json:"since,omitempty"`
+}
+
 type NodeStatus struct {
 	Name string `json:"name"`
 	// Phase: done, working, rebooting, degraded, draining, unknown.
@@ -131,6 +148,8 @@ type NodeStatus struct {
 	// ProviderErrors surfaces AWS/cloud-layer errors from Machine objects
 	// (IAM failures, capacity issues, instance state errors, etc.).
 	ProviderErrors []ProviderError `json:"providerErrors,omitempty"`
+	// Conditions is the full list of Kubernetes node conditions for drill-down.
+	Conditions     []NodeCondition `json:"conditions,omitempty"`
 }
 
 type UpgradeBlocker struct {
@@ -412,6 +431,21 @@ func buildOperatorsStatus(coList *configv1.ClusterOperatorList, now time.Time) O
 			op.Version = co.Status.Versions[0].Version
 		}
 
+		// Full conditions list for drill-down.
+		for _, c := range co.Status.Conditions {
+			cond := OperatorCondition{
+				Type:    string(c.Type),
+				Status:  string(c.Status),
+				Reason:  c.Reason,
+				Message: c.Message,
+			}
+			if !c.LastTransitionTime.IsZero() {
+				t := c.LastTransitionTime
+				cond.Since = &t
+			}
+			op.Conditions = append(op.Conditions, cond)
+		}
+
 		switch {
 		case op.Degraded:
 			op.Phase = "degraded"
@@ -592,6 +626,21 @@ func buildNodeStatus(node corev1.Node, nodePods []corev1.Pod, pdbs []policyv1.Po
 	// Find PDBs actively blocking drain for nodes that are draining or stuck working.
 	if ns.Phase == "draining" || ns.Phase == "working" {
 		ns.DrainBlockers = findDrainBlockers(node, nodePods, pdbs)
+	}
+
+	// Full K8s node conditions for drill-down.
+	for _, cond := range node.Status.Conditions {
+		nc := NodeCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  cond.Reason,
+			Message: cond.Message,
+		}
+		if !cond.LastTransitionTime.IsZero() {
+			t := cond.LastTransitionTime
+			nc.Since = &t
+		}
+		ns.Conditions = append(ns.Conditions, nc)
 	}
 
 	return ns
