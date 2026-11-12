@@ -10,8 +10,8 @@ rules:
 - apiGroups:
   - upgrade.managed.openshift.io
   resources:
-  - upgradepreflightchecks
-  - upgradepreflightchecks/status
+  - upgradereadinesschecks
+  - upgradereadinesschecks/status
   verbs:
   - get
   - list

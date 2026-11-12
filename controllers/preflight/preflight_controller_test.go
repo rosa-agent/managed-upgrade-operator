@@ -61,9 +61,9 @@ var _ = Describe("PreflightController", func() {
 		mockDvoClientBuilder  *dvoMocks.MockDvoClientBuilder
 		mockDvoClient         *dvoMocks.MockDvoClient
 
-		reconciler *ReconcileUpgradePreflightCheck
+		reconciler *ReconcileUpgradeReadinessCheck
 		req        reconcile.Request
-		instance   *upgradev1alpha1.UpgradePreflightCheck
+		instance   *upgradev1alpha1.UpgradeReadinessCheck
 	)
 
 	BeforeEach(func() {
@@ -80,7 +80,7 @@ var _ = Describe("PreflightController", func() {
 		mockDvoClientBuilder = dvoMocks.NewMockDvoClientBuilder(mockCtrl)
 		mockDvoClient = dvoMocks.NewMockDvoClient(mockCtrl)
 
-		reconciler = &ReconcileUpgradePreflightCheck{
+		reconciler = &ReconcileUpgradeReadinessCheck{
 			Client:               mockClient,
 			MetricsClientBuilder: mockMetricsBuilder,
 			CvClientBuilder:      mockCvBuilder,
@@ -96,12 +96,12 @@ var _ = Describe("PreflightController", func() {
 			},
 		}
 
-		instance = &upgradev1alpha1.UpgradePreflightCheck{
+		instance = &upgradev1alpha1.UpgradeReadinessCheck{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-preflight",
 				Namespace: "openshift-managed-upgrade-operator",
 			},
-			Spec: upgradev1alpha1.UpgradePreflightCheckSpec{
+			Spec: upgradev1alpha1.UpgradeReadinessCheckSpec{
 				UpgradeConfigSpec: upgradev1alpha1.UpgradeConfigSpec{
 					Type: "OSD",
 					Desired: upgradev1alpha1.Update{
@@ -155,7 +155,7 @@ var _ = Describe("PreflightController", func() {
 			})
 		})
 
-		Context("when the UpgradePreflightCheck CR is not found", func() {
+		Context("when the UpgradeReadinessCheck CR is not found", func() {
 			It("returns without error", func() {
 				enableGate()
 				mockClient.EXPECT().Get(gomock.Any(), req.NamespacedName, gomock.Any()).
@@ -173,9 +173,9 @@ var _ = Describe("PreflightController", func() {
 				instance.Status.CompletedAt = &now
 				mockClient.EXPECT().Get(gomock.Any(), req.NamespacedName, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ types.NamespacedName, obj interface{}, _ ...interface{}) error {
-						typedObj, ok := obj.(*upgradev1alpha1.UpgradePreflightCheck)
+						typedObj, ok := obj.(*upgradev1alpha1.UpgradeReadinessCheck)
 						if !ok {
-							return fmt.Errorf("expected *UpgradePreflightCheck, got %T", obj)
+							return fmt.Errorf("expected *UpgradeReadinessCheck, got %T", obj)
 						}
 						*typedObj = *instance
 						return nil
@@ -191,17 +191,17 @@ var _ = Describe("PreflightController", func() {
 				enableGate()
 				mockClient.EXPECT().Get(gomock.Any(), req.NamespacedName, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ types.NamespacedName, obj interface{}, _ ...interface{}) error {
-						typedObj := obj.(*upgradev1alpha1.UpgradePreflightCheck)
+						typedObj := obj.(*upgradev1alpha1.UpgradeReadinessCheck)
 						*typedObj = *instance
 						return nil
 					})
 				// pruneAndCount returns 10 existing CRs (at limit)
-				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradePreflightCheckList{}), gomock.Any()).
+				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradeReadinessCheckList{}), gomock.Any()).
 					DoAndReturn(func(_ context.Context, list interface{}, _ ...interface{}) error {
-						l := list.(*upgradev1alpha1.UpgradePreflightCheckList)
+						l := list.(*upgradev1alpha1.UpgradeReadinessCheckList)
 						fresh := metav1.NewTime(time.Now())
 						for i := 0; i < maxPreflightChecks; i++ {
-							l.Items = append(l.Items, upgradev1alpha1.UpgradePreflightCheck{
+							l.Items = append(l.Items, upgradev1alpha1.UpgradeReadinessCheck{
 								ObjectMeta: metav1.ObjectMeta{
 									Name:              fmt.Sprintf("existing-%d", i),
 									CreationTimestamp: fresh,
@@ -225,15 +225,15 @@ var _ = Describe("PreflightController", func() {
 				enableGate()
 				mockClient.EXPECT().Get(gomock.Any(), req.NamespacedName, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ types.NamespacedName, obj interface{}, _ ...interface{}) error {
-						typedObj, ok := obj.(*upgradev1alpha1.UpgradePreflightCheck)
+						typedObj, ok := obj.(*upgradev1alpha1.UpgradeReadinessCheck)
 						if !ok {
-							return fmt.Errorf("expected *UpgradePreflightCheck, got %T", obj)
+							return fmt.Errorf("expected *UpgradeReadinessCheck, got %T", obj)
 						}
 						*typedObj = *instance
 						return nil
 					})
 				// pruneAndCount: list all CRs (empty → 0, well below limit)
-				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradePreflightCheckList{}), gomock.Any()).
+				mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradeReadinessCheckList{}), gomock.Any()).
 					Return(nil)
 
 				// StartedAt update
@@ -294,7 +294,7 @@ var _ = Describe("PreflightController", func() {
 
 	Describe("pruneAndCount", func() {
 		It("returns 0 when no CRs exist", func() {
-			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradePreflightCheckList{}), gomock.Any()).
+			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradeReadinessCheckList{}), gomock.Any()).
 				Return(nil)
 			n, err := reconciler.pruneAndCount(context.TODO(), "openshift-managed-upgrade-operator", "", log)
 			Expect(err).NotTo(HaveOccurred())
@@ -302,7 +302,7 @@ var _ = Describe("PreflightController", func() {
 		})
 
 		It("returns an error when List fails", func() {
-			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradePreflightCheckList{}), gomock.Any()).
+			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradeReadinessCheckList{}), gomock.Any()).
 				Return(fmt.Errorf("list failed"))
 			_, err := reconciler.pruneAndCount(context.TODO(), "openshift-managed-upgrade-operator", "", log)
 			Expect(err).To(HaveOccurred())
@@ -310,17 +310,17 @@ var _ = Describe("PreflightController", func() {
 
 		It("deletes expired CRs and excludes them from the count", func() {
 			old := metav1.NewTime(time.Now().Add(-25 * time.Hour))
-			expiredCR := upgradev1alpha1.UpgradePreflightCheck{
+			expiredCR := upgradev1alpha1.UpgradeReadinessCheck{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:              "expired-check",
 					Namespace:         "openshift-managed-upgrade-operator",
 					CreationTimestamp: old,
 				},
 			}
-			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradePreflightCheckList{}), gomock.Any()).
+			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradeReadinessCheckList{}), gomock.Any()).
 				DoAndReturn(func(_ context.Context, list interface{}, _ ...interface{}) error {
-					l := list.(*upgradev1alpha1.UpgradePreflightCheckList)
-					l.Items = []upgradev1alpha1.UpgradePreflightCheck{expiredCR}
+					l := list.(*upgradev1alpha1.UpgradeReadinessCheckList)
+					l.Items = []upgradev1alpha1.UpgradeReadinessCheck{expiredCR}
 					return nil
 				})
 			mockClient.EXPECT().Delete(gomock.Any(), gomock.Any()).Return(nil)
@@ -331,17 +331,17 @@ var _ = Describe("PreflightController", func() {
 
 		It("skips the named CR and counts it", func() {
 			fresh := metav1.NewTime(time.Now())
-			current := upgradev1alpha1.UpgradePreflightCheck{
+			current := upgradev1alpha1.UpgradeReadinessCheck{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:              "current",
 					Namespace:         "openshift-managed-upgrade-operator",
 					CreationTimestamp: fresh,
 				},
 			}
-			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradePreflightCheckList{}), gomock.Any()).
+			mockClient.EXPECT().List(gomock.Any(), gomock.AssignableToTypeOf(&upgradev1alpha1.UpgradeReadinessCheckList{}), gomock.Any()).
 				DoAndReturn(func(_ context.Context, list interface{}, _ ...interface{}) error {
-					l := list.(*upgradev1alpha1.UpgradePreflightCheckList)
-					l.Items = []upgradev1alpha1.UpgradePreflightCheck{current}
+					l := list.(*upgradev1alpha1.UpgradeReadinessCheckList)
+					l.Items = []upgradev1alpha1.UpgradeReadinessCheck{current}
 					return nil
 				})
 			n, err := reconciler.pruneAndCount(context.TODO(), "openshift-managed-upgrade-operator", "current", log)
@@ -365,7 +365,7 @@ var _ = Describe("PreflightController", func() {
 	})
 
 	Describe("runCheck framework", func() {
-		It("returns a completed PreflightCheckResult on successful check execution", func() {
+		It("returns a completed ReadinessCheckResult on successful check execution", func() {
 			check := &clusterVersionCheck{}
 			deps := CheckDependencies{Client: mockClient, CvClientBuilder: mockCvBuilder}
 			mockCvBuilder.EXPECT().New(gomock.Any()).Return(mockCv)

@@ -3,16 +3,16 @@
     "type": "console.page/route",
     "properties": {
       "exact": true,
-      "path": "/preflight-checks",
-      "component": { "$codeRef": "PreflightCheckPage" }
+      "path": "/upgrade-readiness",
+      "component": { "$codeRef": "UpgradeReadinessPage" }
     }
   },
   {
     "type": "console.navigation/href",
     "properties": {
-      "id": "preflight-checks",
-      "name": "Preflight Checks",
-      "href": "/preflight-checks",
+      "id": "upgrade-readiness",
+      "name": "Upgrade Readiness",
+      "href": "/upgrade-readiness",
       "section": "administration"
     }
   }

@@ -27,8 +27,8 @@ type CheckDependencies struct {
 	DesiredChannel string
 }
 
-// CheckOutput is returned by PreflightCheck.Run.
-// The framework converts this into a full PreflightCheckResult — the check author
+// CheckOutput is returned by ReadinessCheck.Run.
+// The framework converts this into a full ReadinessCheckResult — the check author
 // does not call withTiming, withDesc, or withOwner directly.
 type CheckOutput struct {
 	// Result is CheckPassed, CheckFailed, or CheckResultError.
@@ -46,7 +46,7 @@ type CheckOutput struct {
 	Action string
 }
 
-// PreflightCheck is the contract every preflight check must satisfy.
+// ReadinessCheck is the contract every preflight check must satisfy.
 //
 // To add a new check:
 //  1. Create a struct implementing this interface (add it to the appropriate
@@ -55,7 +55,7 @@ type CheckOutput struct {
 //
 // The framework handles: timeout context, panic recovery, timing, Description,
 // and DefaultOwner. Your Run() only needs to return a CheckOutput.
-type PreflightCheck interface {
+type ReadinessCheck interface {
 	// Name returns the unique check identifier used in CR status and the allowlist.
 	Name() string
 	// Description returns a human-readable explanation of what this check validates.

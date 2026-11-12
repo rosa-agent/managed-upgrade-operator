@@ -10,7 +10,7 @@ rules:
 - apiGroups:
   - upgrade.managed.openshift.io
   resources:
-  - upgradepreflightchecks
+  - upgradereadinesschecks
   verbs:
   - create
   - delete
@@ -20,7 +20,7 @@ rules:
 - apiGroups:
   - upgrade.managed.openshift.io
   resources:
-  - upgradepreflightchecks/status
+  - upgradereadinesschecks/status
   verbs:
   - get
   - list

@@ -19,7 +19,7 @@ var prometheusRetryBase = 2 * time.Second
 
 // resolveCheckTimeout returns the timeout to apply to a single check.
 // Priority: check.DefaultTimeout() > spec.DefaultCheckTimeoutSeconds > 30s constant.
-func resolveCheckTimeout(check PreflightCheck, spec upgradev1alpha1.UpgradePreflightCheckSpec) time.Duration {
+func resolveCheckTimeout(check ReadinessCheck, spec upgradev1alpha1.UpgradeReadinessCheckSpec) time.Duration {
 	if d := check.DefaultTimeout(); d > 0 {
 		return d
 	}
@@ -29,10 +29,10 @@ func resolveCheckTimeout(check PreflightCheck, spec upgradev1alpha1.UpgradePrefl
 	return defaultCheckTimeout
 }
 
-// runCheck executes a PreflightCheck with timeout, panic recovery, timing, and
+// runCheck executes a ReadinessCheck with timeout, panic recovery, timing, and
 // framework-level field injection (Description, Owner, Action). Check authors
 // only need to return a CheckOutput.
-func runCheck(check PreflightCheck, ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) (result upgradev1alpha1.PreflightCheckResult) {
+func runCheck(check ReadinessCheck, ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) (result upgradev1alpha1.ReadinessCheckResult) {
 	start := metav1.Now()
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -56,7 +56,7 @@ func runCheck(check PreflightCheck, ctx context.Context, deps CheckDependencies,
 		owner = check.DefaultOwner()
 	}
 
-	var r upgradev1alpha1.PreflightCheckResult
+	var r upgradev1alpha1.ReadinessCheckResult
 	if output.Result == upgradev1alpha1.CheckResultError {
 		errMsg := output.Error
 		if errMsg == "" {
@@ -74,8 +74,8 @@ func runCheck(check PreflightCheck, ctx context.Context, deps CheckDependencies,
 	return withTiming(r, start, metav1.Now())
 }
 
-func timedOutResult(check PreflightCheck, timeout time.Duration) upgradev1alpha1.PreflightCheckResult {
-	return withDesc(upgradev1alpha1.PreflightCheckResult{
+func timedOutResult(check ReadinessCheck, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
+	return withDesc(upgradev1alpha1.ReadinessCheckResult{
 		Name:           check.Name(),
 		Result:         upgradev1alpha1.CheckResultTimedOut,
 		Owner:          upgradev1alpha1.OwnerServiceTeam,
@@ -85,8 +85,8 @@ func timedOutResult(check PreflightCheck, timeout time.Duration) upgradev1alpha1
 	}, check.Description())
 }
 
-func skippedResult(check PreflightCheck, timeout time.Duration) upgradev1alpha1.PreflightCheckResult {
-	return withDesc(upgradev1alpha1.PreflightCheckResult{
+func skippedResult(check ReadinessCheck, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
+	return withDesc(upgradev1alpha1.ReadinessCheckResult{
 		Name:           check.Name(),
 		Result:         upgradev1alpha1.CheckResultSkipped,
 		Owner:          check.DefaultOwner(),
@@ -95,8 +95,8 @@ func skippedResult(check PreflightCheck, timeout time.Duration) upgradev1alpha1.
 	}, check.Description())
 }
 
-func completedResult(name string, result upgradev1alpha1.CheckResult, summary string, findings []string, timeout time.Duration) upgradev1alpha1.PreflightCheckResult {
-	return upgradev1alpha1.PreflightCheckResult{
+func completedResult(name string, result upgradev1alpha1.CheckResult, summary string, findings []string, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
+	return upgradev1alpha1.ReadinessCheckResult{
 		Name:           name,
 		Result:         result,
 		TimeoutSeconds: int32(timeout.Seconds()),
@@ -108,8 +108,8 @@ func completedResult(name string, result upgradev1alpha1.CheckResult, summary st
 	}
 }
 
-func errorResult(name, errMsg string, timeout time.Duration) upgradev1alpha1.PreflightCheckResult {
-	return upgradev1alpha1.PreflightCheckResult{
+func errorResult(name, errMsg string, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
+	return upgradev1alpha1.ReadinessCheckResult{
 		Name:           name,
 		Result:         upgradev1alpha1.CheckResultError,
 		TimeoutSeconds: int32(timeout.Seconds()),
@@ -120,23 +120,23 @@ func errorResult(name, errMsg string, timeout time.Duration) upgradev1alpha1.Pre
 	}
 }
 
-func withDesc(r upgradev1alpha1.PreflightCheckResult, desc string) upgradev1alpha1.PreflightCheckResult {
+func withDesc(r upgradev1alpha1.ReadinessCheckResult, desc string) upgradev1alpha1.ReadinessCheckResult {
 	r.Description = desc
 	return r
 }
 
-func withTiming(r upgradev1alpha1.PreflightCheckResult, start, end metav1.Time) upgradev1alpha1.PreflightCheckResult {
+func withTiming(r upgradev1alpha1.ReadinessCheckResult, start, end metav1.Time) upgradev1alpha1.ReadinessCheckResult {
 	r.Execution.StartedAt = &start
 	r.Execution.CompletedAt = &end
 	return r
 }
 
-func withOwner(r upgradev1alpha1.PreflightCheckResult, owner upgradev1alpha1.CheckOwner) upgradev1alpha1.PreflightCheckResult {
+func withOwner(r upgradev1alpha1.ReadinessCheckResult, owner upgradev1alpha1.CheckOwner) upgradev1alpha1.ReadinessCheckResult {
 	r.Owner = owner
 	return r
 }
 
-func withAction(r upgradev1alpha1.PreflightCheckResult, action string) upgradev1alpha1.PreflightCheckResult {
+func withAction(r upgradev1alpha1.ReadinessCheckResult, action string) upgradev1alpha1.ReadinessCheckResult {
 	r.Action = action
 	return r
 }

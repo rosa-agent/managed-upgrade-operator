@@ -224,14 +224,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: Once the UpgradePreflightCheck controller is tested and proven stable in
+	// TODO: Once the UpgradeReadinessCheck controller is tested and proven stable in
 	// production, promote this to os.Exit(1) so that a startup failure causes the pod
 	// to restart and triggers on-call alerting, consistent with the other controllers.
 	// Until then the startup failure is intentionally non-fatal so a broken preflight
 	// controller cannot crash the operator or disrupt in-flight upgrades.
 	// Enable the controller at runtime (no restart needed) by adding "PreflightController"
 	// to featureGate.enabled in the managed-upgrade-operator-config ConfigMap.
-	if err = (&preflight.ReconcileUpgradePreflightCheck{
+	if err = (&preflight.ReconcileUpgradeReadinessCheck{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		MetricsClientBuilder: metrics.NewBuilder(),
@@ -241,10 +241,10 @@ func main() {
 		DvoClientBuilder:     dvo.NewBuilder(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err,
-			"UpgradePreflightCheck controller failed to start — on-demand preflight checks will be unavailable. "+
+			"UpgradeReadinessCheck controller failed to start — on-demand preflight checks will be unavailable. "+
 				"Investigate the error above and fix the controller. "+
 				"Existing upgrade paths are not affected.",
-			"controller", "UpgradePreflightCheck",
+			"controller", "UpgradeReadinessCheck",
 		)
 		// Intentionally not os.Exit(1): this controller is experimental.
 	}

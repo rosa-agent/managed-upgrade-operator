@@ -37,7 +37,7 @@ interface Props {
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const CHANNEL_RE = /^(stable|fast|candidate|eus)-\d+\.\d+$/;
 
-export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreated, initialValues }) => {
+export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreated, initialValues }) => {
   const [version, setVersion]               = React.useState('');
   const [channel, setChannel]               = React.useState('');
   const [platform, setPlatform]             = React.useState<'OSD' | 'ARO'>('OSD');
@@ -132,7 +132,7 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 18 }}>
-            {initialValues ? 'Re-run Upgrade Preflight Checks' : 'Run Upgrade Preflight Checks'}
+            {initialValues ? 'Re-run Upgrade Readiness' : 'Run Upgrade Readiness'}
           </div>
           {currentVersion && (
             <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>

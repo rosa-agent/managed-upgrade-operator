@@ -4,11 +4,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// UpgradePreflightCheckSpec defines the target upgrade to check readiness for.
+// UpgradeReadinessCheckSpec defines the target upgrade to check readiness for.
 // It embeds UpgradeConfigSpec so that all UpgradeConfig fields (type, desired version,
 // PDBForceDrainTimeout, etc.) are inherited automatically. Fields like upgradeAt and
 // capacityReservation are present but unused by the preflight controller.
-type UpgradePreflightCheckSpec struct {
+type UpgradeReadinessCheckSpec struct {
 	UpgradeConfigSpec `json:",inline"`
 
 	// DefaultCheckTimeoutSeconds is the per-check timeout fallback used when a check
@@ -114,8 +114,8 @@ type CheckExecution struct {
 	Error string `json:"error,omitempty"`
 }
 
-// PreflightCheckResult holds the result and execution details for a single preflight check.
-type PreflightCheckResult struct {
+// ReadinessCheckResult holds the result and execution details for a single preflight check.
+type ReadinessCheckResult struct {
 	// Name identifies the check (e.g. "CriticalAlerts", "ClusterOperators").
 	Name string `json:"name"`
 
@@ -145,14 +145,14 @@ type PreflightCheckResult struct {
 }
 
 const (
-	// PreflightCompleteCondition is True when all checks have finished running.
+	// ReadinessCompleteCondition is True when all checks have finished running.
 	// The Reason field carries the outcome: Passed, Warning, or Failed.
 	// Use with: oc wait --for=condition=Complete --timeout=5m pfc/<name>
-	PreflightCompleteCondition = "Complete"
+	ReadinessCompleteCondition = "Complete"
 )
 
-// UpgradePreflightCheckStatus reports the outcome of all checks.
-type UpgradePreflightCheckStatus struct {
+// UpgradeReadinessCheckStatus reports the outcome of all checks.
+type UpgradeReadinessCheckStatus struct {
 	// +kubebuilder:validation:Optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// +kubebuilder:validation:Optional
@@ -188,12 +188,12 @@ type UpgradePreflightCheckStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	Checks []PreflightCheckResult `json:"checks,omitempty"`
+	Checks []ReadinessCheckResult `json:"checks,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=upgradepreflightchecks,scope=Namespaced,shortName=pfc
+// +kubebuilder:resource:path=upgradereadinesschecks,scope=Namespaced,shortName=urc
 // +kubebuilder:printcolumn:name="version",type="string",JSONPath=".spec.desired.version"
 // +kubebuilder:printcolumn:name="channel",type="string",JSONPath=".spec.desired.channel"
 // +kubebuilder:printcolumn:name="type",type="string",JSONPath=".spec.type"
@@ -203,25 +203,25 @@ type UpgradePreflightCheckStatus struct {
 // +kubebuilder:printcolumn:name="failed",type="integer",JSONPath=".status.checksFailed"
 // +kubebuilder:printcolumn:name="completed",type="string",JSONPath=".status.completedAt"
 
-// UpgradePreflightCheck is the Schema for on-demand cluster upgrade readiness checks.
+// UpgradeReadinessCheck is the Schema for on-demand cluster upgrade readiness checks.
 // Creating one runs pre-upgrade health checks without scheduling or starting an upgrade.
-type UpgradePreflightCheck struct {
+type UpgradeReadinessCheck struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   UpgradePreflightCheckSpec   `json:"spec,omitempty"`
-	Status UpgradePreflightCheckStatus `json:"status,omitempty"`
+	Spec   UpgradeReadinessCheckSpec   `json:"spec,omitempty"`
+	Status UpgradeReadinessCheckStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// UpgradePreflightCheckList contains a list of UpgradePreflightCheck.
-type UpgradePreflightCheckList struct {
+// UpgradeReadinessCheckList contains a list of UpgradeReadinessCheck.
+type UpgradeReadinessCheckList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []UpgradePreflightCheck `json:"items"`
+	Items           []UpgradeReadinessCheck `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&UpgradePreflightCheck{}, &UpgradePreflightCheckList{})
+	SchemeBuilder.Register(&UpgradeReadinessCheck{}, &UpgradeReadinessCheckList{})
 }

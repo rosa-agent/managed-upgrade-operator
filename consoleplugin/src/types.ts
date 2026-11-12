@@ -13,7 +13,7 @@ export interface CheckExecution {
   error?: string;
 }
 
-export interface PreflightCheckResult {
+export interface ReadinessCheckResult {
   name: string;
   description?: string;
   result: CheckResult;
@@ -23,7 +23,7 @@ export interface PreflightCheckResult {
   execution: CheckExecution;
 }
 
-export interface UpgradePreflightCheckStatus {
+export interface UpgradeReadinessCheckStatus {
   startedAt?: string;
   completedAt?: string;
   overallResult?: CheckResult;
@@ -31,14 +31,14 @@ export interface UpgradePreflightCheckStatus {
   checksWarned?: number;
   checksFailed?: number;
   checksErrored?: number;
-  checks?: PreflightCheckResult[];
+  checks?: ReadinessCheckResult[];
 }
 
-export interface UpgradePreflightCheck extends K8sResourceCommon {
+export interface UpgradeReadinessCheck extends K8sResourceCommon {
   spec: {
     desired: { version: string; channel: string };
     type: 'OSD' | 'ARO';
     checks?: string[];
   };
-  status?: UpgradePreflightCheckStatus;
+  status?: UpgradeReadinessCheckStatus;
 }

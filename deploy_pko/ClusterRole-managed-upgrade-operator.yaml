@@ -35,8 +35,8 @@ rules:
   - upgradeconfigs
   - upgrade
   - upgradeconfigs/status
-  - upgradepreflightchecks
-  - upgradepreflightchecks/status
+  - upgradereadinesschecks
+  - upgradereadinesschecks/status
   verbs:
   - create
   - delete

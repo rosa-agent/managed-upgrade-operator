@@ -5,10 +5,10 @@ import {
 } from '@patternfly/react-core';
 import { TrashIcon, SyncAltIcon, PlusCircleIcon, CaretDownIcon, CaretRightIcon } from '@patternfly/react-icons';
 import { useK8sWatchResource, consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
-import { type UpgradePreflightCheck } from '../types';
+import { type UpgradeReadinessCheck } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { PreflightCheckDetail } from './PreflightCheckDetail';
-import { CreatePreflightForm, type InitialValues } from './CreatePreflightForm';
+import { UpgradeReadinessDetail } from './UpgradeReadinessDetail';
+import { CreateReadinessCheckForm, type InitialValues } from './CreateReadinessCheckForm';
 
 const MUO_NS = 'openshift-managed-upgrade-operator';
 const REQUEST_ID_LABEL = 'preflight.managed.openshift.io/request-id';
@@ -34,7 +34,7 @@ const resultBorder = (r?: string) => {
 };
 
 // Inline-styled colored summary counts — no PF CSS class dependency
-const CheckSummary: React.FC<{ pfc: UpgradePreflightCheck }> = ({ pfc }) => {
+const CheckSummary: React.FC<{ pfc: UpgradeReadinessCheck }> = ({ pfc }) => {
   const s = pfc.status;
   if (!s || (!s.completedAt && !s.startedAt)) {
     return <Spinner size="sm" aria-label="Waiting to start" />;
@@ -68,7 +68,7 @@ const CheckSummary: React.FC<{ pfc: UpgradePreflightCheck }> = ({ pfc }) => {
   );
 };
 
-export const PreflightCheckPage: React.FC = () => {
+export const UpgradeReadinessPage: React.FC = () => {
   const [createOpen, setCreateOpen]       = React.useState(false);
   const [createInitial, setCreateInitial] = React.useState<InitialValues | undefined>();
   const [expanded, setExpanded]           = React.useState<Record<string, boolean>>({});
@@ -76,8 +76,8 @@ export const PreflightCheckPage: React.FC = () => {
   const [deleting, setDeleting]           = React.useState<Record<string, boolean>>({});
   const [deleteError, setDeleteError]     = React.useState<string | null>(null);
 
-  const [checks, loaded, loadError] = useK8sWatchResource<UpgradePreflightCheck[]>({
-    groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradePreflightCheck' },
+  const [checks, loaded, loadError] = useK8sWatchResource<UpgradeReadinessCheck[]>({
+    groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradeReadinessCheck' },
     namespace: MUO_NS,
     isList: true,
   });
@@ -97,7 +97,7 @@ export const PreflightCheckPage: React.FC = () => {
     setCreateOpen(true);
   };
 
-  const handleDelete = async (pfc: UpgradePreflightCheck) => {
+  const handleDelete = async (pfc: UpgradeReadinessCheck) => {
     const name = pfc.metadata?.name ?? '';
     const requestId = pfc.metadata?.labels?.[REQUEST_ID_LABEL];
     if (!requestId) {
@@ -114,7 +114,7 @@ export const PreflightCheckPage: React.FC = () => {
     }
   };
 
-  const handleRerun = (pfc: UpgradePreflightCheck) => {
+  const handleRerun = (pfc: UpgradeReadinessCheck) => {
     openCreate({
       version:     pfc.spec.desired.version,
       channel:     pfc.spec.desired.channel,
@@ -147,7 +147,7 @@ export const PreflightCheckPage: React.FC = () => {
   return (
     <Page>
       <PageSection variant={PageSectionVariants.light}>
-        <Title headingLevel="h1">Upgrade Preflight Checks</Title>
+        <Title headingLevel="h1">Upgrade Readiness</Title>
       </PageSection>
 
       <PageSection>
@@ -287,7 +287,7 @@ export const PreflightCheckPage: React.FC = () => {
                               background: 'rgba(255,255,255,0.02)',
                             }}
                           >
-                            <PreflightCheckDetail pfc={pfc} />
+                            <UpgradeReadinessDetail pfc={pfc} />
                           </td>
                         </tr>
                       )}
@@ -326,7 +326,7 @@ export const PreflightCheckPage: React.FC = () => {
         )}
 
         {/* Inline form panel — no Modal, stays within iframe bounds */}
-        <CreatePreflightForm
+        <CreateReadinessCheckForm
           isOpen={createOpen}
           onClose={() => setCreateOpen(false)}
           onCreated={() => setCreateOpen(false)}
@@ -337,4 +337,4 @@ export const PreflightCheckPage: React.FC = () => {
   );
 };
 
-export default PreflightCheckPage;
+export default UpgradeReadinessPage;

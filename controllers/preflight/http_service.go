@@ -25,7 +25,7 @@ const (
 	// preflightHTTPPort is the port the HTTP service listens on.
 	preflightHTTPPort = ":8443"
 
-	// requestIDLabel is placed on internal UpgradePreflightCheck CRs so the HTTP
+	// requestIDLabel is placed on internal UpgradeReadinessCheck CRs so the HTTP
 	// service can find them by requestId without an in-memory map.
 	requestIDLabel = "preflight.managed.openshift.io/request-id"
 
@@ -45,7 +45,7 @@ type CheckRequest struct {
 	OverallTimeoutSeconds      int32    `json:"overallTimeoutSeconds,omitempty"`
 	ChecksToRun                []string `json:"checksToRun,omitempty"`
 	Description         string   `json:"description,omitempty"`
-	// NamePrefix sets a custom prefix for the generated UpgradePreflightCheck CR name.
+	// NamePrefix sets a custom prefix for the generated UpgradeReadinessCheck CR name.
 	// Must be a valid DNS label segment (lowercase alphanumeric and hyphens, no leading/trailing hyphens).
 	// Defaults to "upgradediags" if empty or invalid.
 	NamePrefix string `json:"namePrefix,omitempty"`
@@ -84,7 +84,7 @@ type CheckResult struct {
 
 // PreflightHTTPServer serves the preflight check HTTP API.
 // It uses the operator's own service-account client to create internal
-// UpgradePreflightCheck CRs (which the sre-regular-user-validation webhook
+// UpgradeReadinessCheck CRs (which the sre-regular-user-validation webhook
 // permits for the operator SA), while enforcing the caller's RBAC via
 // TokenReview + SubjectAccessReview before acting on their behalf.
 type PreflightHTTPServer struct {
@@ -247,7 +247,7 @@ func (s *PreflightHTTPServer) handleCreate(w http.ResponseWriter, r *http.Reques
 	requestID := uuid.New().String()
 	cr := s.buildInternalCR(requestID, req)
 	if err := s.Client.Create(ctx, cr); err != nil {
-		s.Logger.Error(err, "Failed to create UpgradePreflightCheck", "requestId", requestID)
+		s.Logger.Error(err, "Failed to create UpgradeReadinessCheck", "requestId", requestID)
 		http.Error(w, "Internal error creating preflight check", http.StatusInternalServerError)
 		return
 	}
@@ -286,7 +286,7 @@ func (s *PreflightHTTPServer) handleList(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	list := &upgradev1alpha1.UpgradePreflightCheckList{}
+	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.HasLabels{requestIDLabel},
@@ -319,7 +319,7 @@ func (s *PreflightHTTPServer) handleDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.Client.Delete(ctx, cr); err != nil {
-		s.Logger.Error(err, "Failed to delete UpgradePreflightCheck", "requestId", requestID)
+		s.Logger.Error(err, "Failed to delete UpgradeReadinessCheck", "requestId", requestID)
 		http.Error(w, "Internal error deleting preflight check", http.StatusInternalServerError)
 		return
 	}
@@ -370,7 +370,7 @@ func (s *PreflightHTTPServer) warnIfFeatureGateDisabled(ctx context.Context, req
 // cleanupExpiredChecks deletes preflight checks that have passed their TTL.
 // This runs opportunistically when new requests come in to avoid resource buildup.
 func (s *PreflightHTTPServer) cleanupExpiredChecks(ctx context.Context) {
-	list := &upgradev1alpha1.UpgradePreflightCheckList{}
+	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.HasLabels{requestIDLabel},
@@ -405,7 +405,7 @@ func (s *PreflightHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 // Returns an error with instructions if the limit is reached.
 func (s *PreflightHTTPServer) checkActiveLimit(ctx context.Context) error {
 	const maxActiveChecks = 10
-	list := &upgradev1alpha1.UpgradePreflightCheckList{}
+	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.HasLabels{requestIDLabel},
@@ -443,7 +443,7 @@ func (s *PreflightHTTPServer) authorizeToken(ctx context.Context, token, verb st
 				Namespace: s.Namespace,
 				Verb:      verb,
 				Group:     "upgrade.managed.openshift.io",
-				Resource:  "upgradepreflightchecks",
+				Resource:  "upgradereadinesschecks",
 			},
 		},
 	}
@@ -460,8 +460,8 @@ func (s *PreflightHTTPServer) authorizeToken(ctx context.Context, token, verb st
 	return nil
 }
 
-func (s *PreflightHTTPServer) findCR(ctx context.Context, requestID string) (*upgradev1alpha1.UpgradePreflightCheck, error) {
-	list := &upgradev1alpha1.UpgradePreflightCheckList{}
+func (s *PreflightHTTPServer) findCR(ctx context.Context, requestID string) (*upgradev1alpha1.UpgradeReadinessCheck, error) {
+	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.MatchingLabels{requestIDLabel: requestID},
@@ -491,7 +491,7 @@ func crNamePrefix(raw string) string {
 	return prefix + "-"
 }
 
-func (s *PreflightHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradePreflightCheck {
+func (s *PreflightHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradeReadinessCheck {
 	annotations := map[string]string{
 		// Auto-delete after 24 hours to prevent resource buildup
 		"preflight.managed.openshift.io/delete-after": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
@@ -499,14 +499,14 @@ func (s *PreflightHTTPServer) buildInternalCR(requestID string, req CheckRequest
 	if req.Description != "" {
 		annotations["preflight.managed.openshift.io/description"] = req.Description
 	}
-	return &upgradev1alpha1.UpgradePreflightCheck{
+	return &upgradev1alpha1.UpgradeReadinessCheck{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: crNamePrefix(req.NamePrefix),
 			Namespace:    s.Namespace,
 			Labels:       map[string]string{requestIDLabel: requestID},
 			Annotations:  annotations,
 		},
-		Spec: upgradev1alpha1.UpgradePreflightCheckSpec{
+		Spec: upgradev1alpha1.UpgradeReadinessCheckSpec{
 			UpgradeConfigSpec: upgradev1alpha1.UpgradeConfigSpec{
 				Type:                 upgradev1alpha1.UpgradeType(req.Platform),
 				Desired:              upgradev1alpha1.Update{Version: req.TargetVersion, Channel: req.TargetChannel},
@@ -520,7 +520,7 @@ func (s *PreflightHTTPServer) buildInternalCR(requestID string, req CheckRequest
 	}
 }
 
-func buildResponse(requestID string, cr *upgradev1alpha1.UpgradePreflightCheck) CheckResponse {
+func buildResponse(requestID string, cr *upgradev1alpha1.UpgradeReadinessCheck) CheckResponse {
 	status := "pending"
 	if cr.Status.StartedAt != nil {
 		status = "running"

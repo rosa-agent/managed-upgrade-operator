@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { List, ListItem } from '@patternfly/react-core';
-import { type UpgradePreflightCheck, type PreflightCheckResult, type CheckResult } from '../types';
+import { type UpgradeReadinessCheck, type ReadinessCheckResult, type CheckResult } from '../types';
 import { StatusBadge } from './StatusBadge';
 
-interface Props { pfc: UpgradePreflightCheck; }
+interface Props { pfc: UpgradeReadinessCheck; }
 
 const DESCRIPTION_ANNOTATION = 'preflight.managed.openshift.io/description';
 
@@ -39,9 +39,9 @@ const checkBorderColor = (result: CheckResult): string => {
 // "Danger alert:" in the console plugin iframe when PF CSS is not fully loaded.
 const SummaryBanner: React.FC<{
   issueCount: number;
-  customerItems: PreflightCheckResult[];
-  redHatItems: PreflightCheckResult[];
-  otherItems: PreflightCheckResult[];
+  customerItems: ReadinessCheckResult[];
+  redHatItems: ReadinessCheckResult[];
+  otherItems: ReadinessCheckResult[];
   hasErrors: boolean;
 }> = ({ issueCount, customerItems, redHatItems, otherItems, hasErrors }) => {
   const borderColor = hasErrors ? '#c9190b' : '#c58c00';
@@ -82,7 +82,7 @@ const SummaryBanner: React.FC<{
 };
 
 // Expanded check row content
-const CheckRowDetail: React.FC<{ c: PreflightCheckResult }> = ({ c }) => {
+const CheckRowDetail: React.FC<{ c: ReadinessCheckResult }> = ({ c }) => {
   const ownerLabel = c.owner === 'customer'
     ? 'Customer action required'
     : c.owner === 'service-team'
@@ -163,7 +163,7 @@ const CheckRowDetail: React.FC<{ c: PreflightCheckResult }> = ({ c }) => {
   );
 };
 
-export const PreflightCheckDetail: React.FC<Props> = ({ pfc }) => {
+export const UpgradeReadinessDetail: React.FC<Props> = ({ pfc }) => {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const toggle = (name: string) => setExpanded(prev => ({ ...prev, [name]: !prev[name] }));
 

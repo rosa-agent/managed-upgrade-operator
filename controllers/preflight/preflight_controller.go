@@ -23,11 +23,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var log = logf.Log.WithName("controller_upgradepreflightcheck")
+var log = logf.Log.WithName("controller_upgradereadinesscheck")
 
 const (
 	preflightControllerFeatureGate = "PreflightController"
-	maxPreflightChecks    = 10
+	maxReadinessChecks    = 10
 	preflightCheckTTL     = 24 * time.Hour
 	deleteAfterAnnotation = "preflight.managed.openshift.io/delete-after"
 )
@@ -64,8 +64,8 @@ func (c *preflightGateConfig) isEnabled() bool {
 	return false
 }
 
-// ReconcileUpgradePreflightCheck reconciles UpgradePreflightCheck objects.
-type ReconcileUpgradePreflightCheck struct {
+// ReconcileUpgradeReadinessCheck reconciles UpgradeReadinessCheck objects.
+type ReconcileUpgradeReadinessCheck struct {
 	Client               client.Client
 	Scheme               *runtime.Scheme
 	MetricsClientBuilder metrics.MetricsBuilder
@@ -75,10 +75,10 @@ type ReconcileUpgradePreflightCheck struct {
 	DvoClientBuilder     dvo.DvoClientBuilder
 }
 
-func (r *ReconcileUpgradePreflightCheck) pruneAndCount(ctx context.Context, namespace, skipName string, logger logr.Logger) (int, error) {
-	list := &upgradev1alpha1.UpgradePreflightCheckList{}
+func (r *ReconcileUpgradeReadinessCheck) pruneAndCount(ctx context.Context, namespace, skipName string, logger logr.Logger) (int, error) {
+	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
 	if err := r.Client.List(ctx, list, client.InNamespace(namespace)); err != nil {
-		return 0, fmt.Errorf("listing UpgradePreflightChecks: %w", err)
+		return 0, fmt.Errorf("listing UpgradeReadinessChecks: %w", err)
 	}
 	now := time.Now()
 	remaining := 0
@@ -91,9 +91,9 @@ func (r *ReconcileUpgradePreflightCheck) pruneAndCount(ctx context.Context, name
 			}
 		}
 		if expired && cr.Name != skipName {
-			logger.Info("Pruning expired UpgradePreflightCheck", "name", cr.Name)
+			logger.Info("Pruning expired UpgradeReadinessCheck", "name", cr.Name)
 			if err := r.Client.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
-				logger.Error(err, "Failed to prune expired UpgradePreflightCheck", "name", cr.Name)
+				logger.Error(err, "Failed to prune expired UpgradeReadinessCheck", "name", cr.Name)
 			}
 			continue
 		}
@@ -102,7 +102,7 @@ func (r *ReconcileUpgradePreflightCheck) pruneAndCount(ctx context.Context, name
 	return remaining, nil
 }
 
-func (r *ReconcileUpgradePreflightCheck) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
+func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
 	logger := log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
 
 	defer func() {
@@ -126,9 +126,9 @@ func (r *ReconcileUpgradePreflightCheck) Reconcile(ctx context.Context, req reco
 		return reconcile.Result{}, nil
 	}
 
-	logger.Info("Reconciling UpgradePreflightCheck")
+	logger.Info("Reconciling UpgradeReadinessCheck")
 
-	instance := &upgradev1alpha1.UpgradePreflightCheck{}
+	instance := &upgradev1alpha1.UpgradeReadinessCheck{}
 	if err := r.Client.Get(ctx, req.NamespacedName, instance); err != nil {
 		if apierrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
@@ -141,20 +141,20 @@ func (r *ReconcileUpgradePreflightCheck) Reconcile(ctx context.Context, req reco
 	}
 
 	if total, listErr := r.pruneAndCount(ctx, req.Namespace, instance.Name, logger); listErr != nil {
-		logger.Error(listErr, "Could not list UpgradePreflightChecks; skipping limit enforcement")
-	} else if total >= maxPreflightChecks {
+		logger.Error(listErr, "Could not list UpgradeReadinessChecks; skipping limit enforcement")
+	} else if total >= maxReadinessChecks {
 		now := metav1.NewTime(time.Now())
 		if instance.Status.StartedAt == nil {
 			instance.Status.StartedAt = &now
 		}
 		instance.Status.CompletedAt = &now
-		instance.Status.Checks = []upgradev1alpha1.PreflightCheckResult{{
+		instance.Status.Checks = []upgradev1alpha1.ReadinessCheckResult{{
 			Name:           "LimitCheck",
 			Result:         upgradev1alpha1.CheckResultError,
 			TimeoutSeconds: 0,
 			Execution: upgradev1alpha1.CheckExecution{
 				State: upgradev1alpha1.CheckError,
-				Error: fmt.Sprintf("too many UpgradePreflightCheck CRs (%d/%d). Delete completed checks before creating new ones.", total, maxPreflightChecks),
+				Error: fmt.Sprintf("too many UpgradeReadinessCheck CRs (%d/%d). Delete completed checks before creating new ones.", total, maxReadinessChecks),
 			},
 		}}
 		if err := r.Client.Status().Update(ctx, instance); err != nil {
@@ -181,12 +181,12 @@ func (r *ReconcileUpgradePreflightCheck) Reconcile(ctx context.Context, req reco
 		return reconcile.Result{}, err
 	}
 
-	logger.Info("UpgradePreflightCheck completed", "totalChecks", len(checks))
+	logger.Info("UpgradeReadinessCheck completed", "totalChecks", len(checks))
 	return reconcile.Result{}, nil
 }
 
 // applyAggregates computes overall result counts and sets the Complete condition.
-func applyAggregates(status *upgradev1alpha1.UpgradePreflightCheckStatus, checks []upgradev1alpha1.PreflightCheckResult, now metav1.Time) {
+func applyAggregates(status *upgradev1alpha1.UpgradeReadinessCheckStatus, checks []upgradev1alpha1.ReadinessCheckResult, now metav1.Time) {
 	var passed, warned, failed, errored int
 	for _, c := range checks {
 		switch c.Result {
@@ -219,7 +219,7 @@ func applyAggregates(status *upgradev1alpha1.UpgradePreflightCheckStatus, checks
 
 	msg := fmt.Sprintf("%d passed, %d warned, %d failed, %d errored", passed, warned, failed, errored)
 	status.Conditions = []metav1.Condition{{
-		Type:               upgradev1alpha1.PreflightCompleteCondition,
+		Type:               upgradev1alpha1.ReadinessCompleteCondition,
 		Status:             metav1.ConditionTrue,
 		Reason:             string(overall),
 		Message:            msg,
@@ -227,11 +227,11 @@ func applyAggregates(status *upgradev1alpha1.UpgradePreflightCheckStatus, checks
 	}}
 }
 
-func (r *ReconcileUpgradePreflightCheck) runChecks(
+func (r *ReconcileUpgradeReadinessCheck) runChecks(
 	ctx context.Context,
-	instance *upgradev1alpha1.UpgradePreflightCheck,
+	instance *upgradev1alpha1.UpgradeReadinessCheck,
 	logger logr.Logger,
-) []upgradev1alpha1.PreflightCheckResult {
+) []upgradev1alpha1.ReadinessCheckResult {
 	deps := CheckDependencies{
 		Client:               r.Client,
 		MetricsClientBuilder: r.MetricsClientBuilder,
@@ -250,7 +250,7 @@ func (r *ReconcileUpgradePreflightCheck) runChecks(
 		defer cancel()
 	}
 
-	var results []upgradev1alpha1.PreflightCheckResult
+	var results []upgradev1alpha1.ReadinessCheckResult
 	for _, check := range registeredChecks {
 		timeout := resolveCheckTimeout(check, instance.Spec)
 		if runCtx.Err() != nil {
@@ -278,9 +278,9 @@ func checkAllowed(name string, allowlist []string) bool {
 	return false
 }
 
-func (r *ReconcileUpgradePreflightCheck) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ReconcileUpgradeReadinessCheck) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&upgradev1alpha1.UpgradePreflightCheck{}).
+		For(&upgradev1alpha1.UpgradeReadinessCheck{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
 		Complete(r)
 }

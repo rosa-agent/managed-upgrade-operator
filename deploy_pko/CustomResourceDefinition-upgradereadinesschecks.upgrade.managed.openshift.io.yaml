@@ -6,16 +6,16 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.16.4
     package-operator.run/phase: crds
     package-operator.run/collision-protection: IfNoController
-  name: upgradepreflightchecks.upgrade.managed.openshift.io
+  name: upgradereadinesschecks.upgrade.managed.openshift.io
 spec:
   group: upgrade.managed.openshift.io
   names:
-    kind: UpgradePreflightCheck
-    listKind: UpgradePreflightCheckList
-    plural: upgradepreflightchecks
+    kind: UpgradeReadinessCheck
+    listKind: UpgradeReadinessCheckList
+    plural: upgradereadinesschecks
     shortNames:
       - pfc
-    singular: upgradepreflightcheck
+    singular: upgradereadinesscheck
   scope: Namespaced
   versions:
     - additionalPrinterColumns:
@@ -47,7 +47,7 @@ spec:
       name: v1alpha1
       schema:
         openAPIV3Schema:
-          description: UpgradePreflightCheck is the Schema for on-demand cluster upgrade readiness checks.
+          description: UpgradeReadinessCheck is the Schema for on-demand cluster upgrade readiness checks.
           properties:
             apiVersion:
               description: |-
@@ -67,7 +67,7 @@ spec:
             metadata:
               type: object
             spec:
-              description: UpgradePreflightCheckSpec defines the target upgrade to check readiness for.
+              description: UpgradeReadinessCheckSpec defines the target upgrade to check readiness for.
               properties:
                 capacityReservation:
                   description: CapacityReservation is reserved for future use.
@@ -116,7 +116,7 @@ spec:
                 - type
               type: object
             status:
-              description: UpgradePreflightCheckStatus reports the outcome of all checks.
+              description: UpgradeReadinessCheckStatus reports the outcome of all checks.
               properties:
                 startedAt:
                   description: StartedAt is when the first check began running.
@@ -203,7 +203,7 @@ spec:
                 checks:
                   description: Checks contains per-check results with findings and recommended actions.
                   items:
-                    description: PreflightCheckResult holds the result and execution details for a single preflight check.
+                    description: ReadinessCheckResult holds the result and execution details for a single readiness check.
                     properties:
                       name:
                         description: Name identifies the check (e.g. "CriticalAlerts", "ClusterOperators").
