@@ -41,6 +41,7 @@ func (c *stuckTerminatingPodsCheck) Run(ctx context.Context, deps CheckDependenc
 	var stuck []string
 	var findings []string
 
+	nsCache := newNamespacePlatformCache(deps.Client)
 	serviceTeamPod := false
 	for i := range pods.Items {
 		pod := &pods.Items[i]
@@ -52,7 +53,7 @@ func (c *stuckTerminatingPodsCheck) Run(ctx context.Context, deps CheckDependenc
 			label := fmt.Sprintf("%s/%s: terminating for %s", pod.Namespace, pod.Name, age.Round(time.Second))
 			stuck = append(stuck, label)
 			findings = append(findings, label)
-			if isOpenShiftNamespace(pod.Namespace) {
+			if nsCache.IsPlatform(ctx, pod.Namespace) {
 				serviceTeamPod = true
 			}
 		}
@@ -80,6 +81,3 @@ func (c *stuckTerminatingPodsCheck) Run(ctx context.Context, deps CheckDependenc
 	}
 }
 
-func isOpenShiftNamespace(ns string) bool {
-	return len(ns) >= 10 && ns[:10] == "openshift-" || ns == "openshift" || ns == "kube-system" || ns == "default"
-}
