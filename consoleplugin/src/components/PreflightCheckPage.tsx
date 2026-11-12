@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {
   Page, PageSection, PageSectionVariants, Title,
-  Button, Spinner, Alert, EmptyState, EmptyStateBody,
+  Button, Spinner, Alert, EmptyState, EmptyStateBody, Label,
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td } from '@patternfly/react-table';
 import { TrashIcon, SyncAltIcon, PlusCircleIcon } from '@patternfly/react-icons';
@@ -25,6 +25,15 @@ const relativeTime = (ts?: string): string => {
   return new Date(ts).toLocaleDateString();
 };
 
+// Left border color gives instant row-level severity at a glance
+const rowBorderColor = (result?: string): string => {
+  if (result === 'Failed') return 'var(--pf-v5-global--palette--red-200)';
+  if (result === 'Error')  return 'var(--pf-v5-global--palette--orange-300)';
+  if (result === 'Warning') return 'var(--pf-v5-global--palette--gold-300)';
+  if (result === 'Passed') return 'var(--pf-v5-global--palette--green-300)';
+  return 'transparent';
+};
+
 const CheckSummary: React.FC<{ pfc: UpgradePreflightCheck }> = ({ pfc }) => {
   const s = pfc.status;
   if (!s || (!s.completedAt && !s.startedAt)) {
@@ -39,24 +48,21 @@ const CheckSummary: React.FC<{ pfc: UpgradePreflightCheck }> = ({ pfc }) => {
       </span>
     );
   }
-  const parts: Array<[number | undefined, string, string]> = [
-    [s.checksPassed,  'passed',  'var(--pf-v5-global--success-color--100)'],
-    [s.checksFailed,  'failed',  'var(--pf-v5-global--palette--red-200)'],
-    [s.checksErrored, s.checksErrored === 1 ? 'error' : 'errors', 'var(--pf-v5-global--palette--red-200)'],
-    [s.checksWarned,  s.checksWarned === 1  ? 'warning' : 'warnings', 'var(--pf-v5-global--warning-color--100)'],
-  ];
-  const nodes = parts
-    .filter(([n]) => n && n > 0)
-    .map(([n, label, color], i) => (
-      <span key={i} style={{ color }}>{n} {label}</span>
-    ));
   return (
-    <>
-      {nodes.reduce<React.ReactNode[]>((acc, el, i) =>
-        i === 0 ? [el] : [...acc, <span key={`sep-${i}`} style={{ color: 'var(--pf-v5-global--Color--200)' }}> · </span>, el],
-        []
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      {(s.checksPassed ?? 0) > 0 && (
+        <Label color="green" isCompact>{s.checksPassed} passed</Label>
       )}
-    </>
+      {(s.checksFailed ?? 0) > 0 && (
+        <Label color="red" isCompact>{s.checksFailed} failed</Label>
+      )}
+      {(s.checksErrored ?? 0) > 0 && (
+        <Label color="orange" isCompact>{s.checksErrored} {s.checksErrored === 1 ? 'error' : 'errors'}</Label>
+      )}
+      {(s.checksWarned ?? 0) > 0 && (
+        <Label color="gold" isCompact>{s.checksWarned} {s.checksWarned === 1 ? 'warning' : 'warnings'}</Label>
+      )}
+    </div>
   );
 };
 
@@ -145,15 +151,15 @@ export const PreflightCheckPage: React.FC = () => {
         )}
 
         {loaded && sorted.length > 0 && (
-          <Table aria-label="Upgrade preflight checks">
+          <Table aria-label="Upgrade preflight checks" style={{ width: '100%' }}>
             <Thead>
               <Tr>
-                <Th />
-                <Th>Target</Th>
-                <Th>Result</Th>
-                <Th>Checks</Th>
-                <Th>Started</Th>
-                <Th />
+                <Th style={{ width: 32 }} />
+                <Th style={{ minWidth: 180 }}>Target</Th>
+                <Th style={{ width: 120 }}>Result</Th>
+                <Th style={{ minWidth: 220 }}>Checks</Th>
+                <Th style={{ width: 130 }}>Started</Th>
+                <Th style={{ width: 90 }} />
               </Tr>
             </Thead>
             <Tbody>
@@ -162,19 +168,30 @@ export const PreflightCheckPage: React.FC = () => {
                 const isExpanded  = !!expanded[name];
                 const isDeleting  = !!deleting[name];
                 const description = pfc.metadata?.annotations?.[DESCRIPTION_ANNOTATION];
-                const target      = `${pfc.spec.desired.version} / ${pfc.spec.desired.channel}`;
+                const borderColor = rowBorderColor(pfc.status?.overallResult);
 
                 return (
                   <React.Fragment key={name}>
-                    <Tr style={{ cursor: 'pointer' }} onClick={() => toggle(name)}>
+                    <Tr
+                      style={{
+                        cursor: 'pointer',
+                        borderLeft: `4px solid ${borderColor}`,
+                      }}
+                      onClick={() => toggle(name)}
+                    >
                       <Td
                         expand={{ isExpanded, onToggle: () => toggle(name), rowIndex }}
                         onClick={e => e.stopPropagation()}
                       />
                       <Td>
-                        <strong>{target}</strong>
+                        <div style={{ fontWeight: 600, fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
+                          {pfc.spec.desired.version}
+                        </div>
+                        <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', color: 'var(--pf-v5-global--Color--200)' }}>
+                          {pfc.spec.desired.channel}
+                        </div>
                         {description && (
-                          <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', color: 'var(--pf-v5-global--Color--200)' }}>
+                          <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', color: 'var(--pf-v5-global--Color--200)', marginTop: 2 }}>
                             {description}
                           </div>
                         )}
@@ -185,7 +202,9 @@ export const PreflightCheckPage: React.FC = () => {
                           : <Spinner size="sm" />}
                       </Td>
                       <Td><CheckSummary pfc={pfc} /></Td>
-                      <Td>{relativeTime(pfc.metadata?.creationTimestamp)}</Td>
+                      <Td style={{ color: 'var(--pf-v5-global--Color--200)' }}>
+                        {relativeTime(pfc.metadata?.creationTimestamp)}
+                      </Td>
                       <Td
                         onClick={e => e.stopPropagation()}
                         style={{ whiteSpace: 'nowrap', textAlign: 'right' }}
@@ -213,7 +232,7 @@ export const PreflightCheckPage: React.FC = () => {
                     </Tr>
                     {isExpanded && (
                       <Tr isExpanded>
-                        <Td colSpan={6}>
+                        <Td colSpan={6} style={{ paddingTop: 0 }}>
                           <PreflightCheckDetail pfc={pfc} />
                         </Td>
                       </Tr>
@@ -222,9 +241,15 @@ export const PreflightCheckPage: React.FC = () => {
                 );
               })}
 
-              {/* Run new check at the bottom of the table */}
               <Tr>
-                <Td colSpan={6} style={{ textAlign: 'center', borderTop: '1px solid var(--pf-v5-global--BorderColor--100)' }}>
+                <Td
+                  colSpan={6}
+                  style={{
+                    textAlign: 'center',
+                    borderTop: '1px solid var(--pf-v5-global--BorderColor--100)',
+                    padding: '12px 0',
+                  }}
+                >
                   <Button variant="link" icon={<PlusCircleIcon />} onClick={() => openCreate()}>
                     Run New Check
                   </Button>

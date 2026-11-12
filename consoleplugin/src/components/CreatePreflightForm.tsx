@@ -128,7 +128,6 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
       title={initialValues ? 'Re-run Upgrade Preflight Checks' : 'Run Upgrade Preflight Checks'}
       isOpen={isOpen}
       onClose={handleClose}
-      appendTo={() => document.body}
       actions={[
         <Button key="run" variant="primary" isLoading={submitting} isDisabled={!canSubmit} onClick={handleSubmit}>
           Run Checks
