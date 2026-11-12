@@ -348,6 +348,8 @@ func (c *pdbDrainSafetyCheck) Run(ctx context.Context, deps CheckDependencies, l
 		allowed := pdb.Status.DisruptionsAllowed
 		isCP := cpNamespaces[pdb.Namespace]
 
+		uhepStr := describeUHEP(pdb.Spec.UnhealthyPodEvictionPolicy)
+
 		switch {
 		case allowed == 0 && currentHealthy > 0:
 			// MCS-252 cases 2 (CP) and 4 (customer): PDB is protecting live healthy pods —
@@ -357,19 +359,19 @@ func (c *pdbDrainSafetyCheck) Run(ctx context.Context, deps CheckDependencies, l
 				owner = "redhat"
 				hasServiceTeamBlocker = true
 			}
-			msg := fmt.Sprintf("%s [owner=%s]: BLOCKING DRAIN — disruptionsAllowed=0 currentHealthy=%d desiredHealthy=%d",
-				key, owner, currentHealthy, desiredHealthy)
+			msg := fmt.Sprintf("%s [owner=%s]: BLOCKING DRAIN — disruptionsAllowed=0 currentHealthy=%d desiredHealthy=%d %s",
+				key, owner, currentHealthy, desiredHealthy, uhepStr)
 			blocking = append(blocking, msg)
 			findings = append(findings, msg)
 
 		case allowed == 0 && currentHealthy == 0:
 			// MCS-252 case 1 (CP) and 3 (uninstalling): PDB blocks on paper but no healthy pods —
 			// safe to drain past this PDB.
-			findings = append(findings, fmt.Sprintf("%s: disruptionsAllowed=0 but currentHealthy=0 — safe (no pods to protect)", key))
+			findings = append(findings, fmt.Sprintf("%s: disruptionsAllowed=0 currentHealthy=0 — safe (no pods to protect) %s", key, uhepStr))
 
 		default:
-			findings = append(findings, fmt.Sprintf("%s: disruptionsAllowed=%d currentHealthy=%d desiredHealthy=%d — ok",
-				key, allowed, currentHealthy, desiredHealthy))
+			findings = append(findings, fmt.Sprintf("%s: disruptionsAllowed=%d currentHealthy=%d desiredHealthy=%d %s — ok",
+				key, allowed, currentHealthy, desiredHealthy, uhepStr))
 		}
 	}
 

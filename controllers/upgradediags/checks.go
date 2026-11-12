@@ -33,6 +33,7 @@ var registeredChecks = []DiagnosticsCheck{
 	&podDisruptionBudgetsCheck{},
 	&pdbMasterInfraExtendedCheck{},
 	&pdbDrainSafetyCheck{},
+	&stuckDrainingNodesCheck{},
 	&stuckTerminatingPodsCheck{},
 	// ---- Configuration compatibility ----
 	&pausedMachineConfigPoolCheck{},
