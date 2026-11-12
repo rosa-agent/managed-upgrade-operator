@@ -9,6 +9,7 @@ import { type UpgradeDiagsCheck } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { UpgradeDiagsDetail } from './UpgradeDiagsDetail';
 import { CreateDiagsCheckForm, type InitialValues } from './CreateDiagsCheckForm';
+import { UpgradeStatusView } from './UpgradeStatusView';
 
 const MUO_NS = 'openshift-managed-upgrade-operator';
 const UPGRADEDIAGS_REQUEST_ID_LABEL = 'upgradediags.managed.openshift.io/request-id';
@@ -68,7 +69,15 @@ const CheckSummary: React.FC<{ pfc: UpgradeDiagsCheck }> = ({ pfc }) => {
   );
 };
 
+type Tab = 'checks' | 'status';
+
+const TAB_LABELS: Record<Tab, string> = {
+  checks: 'Diagnostics Checks',
+  status: 'Upgrade Status',
+};
+
 export const UpgradeDiagsPage: React.FC = () => {
+  const [activeTab, setActiveTab]         = React.useState<Tab>('checks');
   const [createOpen, setCreateOpen]       = React.useState(false);
   const [createInitial, setCreateInitial] = React.useState<InitialValues | undefined>();
   const [expanded, setExpanded]           = React.useState<Record<string, boolean>>({});
@@ -148,9 +157,36 @@ export const UpgradeDiagsPage: React.FC = () => {
     <Page>
       <PageSection variant={PageSectionVariants.light}>
         <Title headingLevel="h1">Upgrade Diagnostics</Title>
+        {/* Tab bar */}
+        <div style={{ display: 'flex', gap: 0, marginTop: 16, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          {(Object.keys(TAB_LABELS) as Tab[]).map(tab => {
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: active ? '3px solid #73bcf7' : '3px solid transparent',
+                  color: active ? '#73bcf7' : 'rgba(255,255,255,0.6)',
+                  cursor: 'pointer',
+                  fontWeight: active ? 700 : 400,
+                  fontSize: 14,
+                  padding: '8px 20px 10px',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {TAB_LABELS[tab]}
+              </button>
+            );
+          })}
+        </div>
       </PageSection>
 
       <PageSection>
+        {activeTab === 'status' && <UpgradeStatusView />}
+        {activeTab === 'checks' && (<>
         {deleteError && (
           <Alert variant="warning" isInline title="Delete failed" style={{ marginBottom: 16 }}>
             {deleteError}
@@ -332,6 +368,7 @@ export const UpgradeDiagsPage: React.FC = () => {
           onCreated={() => setCreateOpen(false)}
           initialValues={createInitial}
         />
+        </>)}
       </PageSection>
     </Page>
   );
