@@ -112,6 +112,8 @@ func (s *UpgradeDiagsHTTPServer) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/upgrade-diags", s.route)
 	mux.HandleFunc("/api/v1/upgrade-diags/", s.route)
+	mux.HandleFunc("/api/v1/upgrade-status", s.routeStatus)
+	mux.HandleFunc("/api/v1/upgrade-status/", s.routeStatus)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	srv := &http.Server{
