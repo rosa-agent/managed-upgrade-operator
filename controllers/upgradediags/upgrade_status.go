@@ -38,6 +38,9 @@ type UpgradeStatusSnapshot struct {
 	// Blockers lists conditions actively preventing upgrade progress.
 	// Empty when the upgrade is proceeding normally or is not started.
 	Blockers []UpgradeBlocker `json:"blockers,omitempty"`
+	// MachineHealthChecks is the list of MachineHealthCheck objects from
+	// openshift-machine-api, showing remediation status at upgrade time.
+	MachineHealthChecks []MachineHealthCheckStatus `json:"machineHealthChecks,omitempty"`
 }
 
 type ControlPlaneStatus struct {
@@ -163,6 +166,20 @@ type UpgradeBlocker struct {
 	ElapsedSeconds int64        `json:"elapsedSeconds,omitempty"`
 }
 
+// MachineHealthCheckStatus summarises a single MachineHealthCheck object.
+type MachineHealthCheckStatus struct {
+	Name             string `json:"name"`
+	// MaxUnhealthy is the configured threshold as a string ("2" or "100%").
+	MaxUnhealthy     string `json:"maxUnhealthy"`
+	ExpectedMachines int    `json:"expectedMachines"`
+	CurrentHealthy   int    `json:"currentHealthy"`
+	// RemediationsAllowed is 0 when the controller has paused remediation because
+	// the number of unhealthy machines would exceed MaxUnhealthy.
+	RemediationsAllowed int  `json:"remediationsAllowed"`
+	// Remediating is true when currentHealthy < expectedMachines.
+	Remediating         bool `json:"remediating"`
+}
+
 // UpgradeHistoryEntry is one entry from ClusterVersion's upgrade history.
 type UpgradeHistoryEntry struct {
 	Version     string       `json:"version"`
@@ -273,6 +290,9 @@ func (s *UpgradeDiagsHTTPServer) buildStatusSnapshot(ctx context.Context) (*Upgr
 	// Machine objects (OpenShift Machine API) for cloud-provider errors — optional.
 	machines, _ := s.listMachines(ctx)
 
+	// MachineHealthChecks — optional; skip on error.
+	mhcs, _ := s.listMHCs(ctx)
+
 	snap := &UpgradeStatusSnapshot{}
 	snap.CurrentVersion = currentVersion(cv)
 	snap.TargetVersion = targetVersion(cv)
@@ -309,6 +329,9 @@ func (s *UpgradeDiagsHTTPServer) buildStatusSnapshot(ctx context.Context) (*Upgr
 
 	// Collect blockers.
 	snap.Blockers = collectBlockers(cv, snap.Operators, snap.MachinePools, now)
+
+	// MachineHealthChecks.
+	snap.MachineHealthChecks = buildMHCStatuses(mhcs)
 
 	return snap, nil
 }
@@ -849,6 +872,46 @@ func podOwnerRef(pod corev1.Pod) string {
 		}
 	}
 	return ""
+}
+
+// ---- MachineHealthCheck status ---------------------------------------------
+
+var mhcListGVK = schema.GroupVersionKind{
+	Group:   "machine.openshift.io",
+	Version: "v1beta1",
+	Kind:    "MachineHealthCheckList",
+}
+
+func (s *UpgradeDiagsHTTPServer) listMHCs(ctx context.Context) ([]unstructured.Unstructured, error) {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(mhcListGVK)
+	if err := s.Client.List(ctx, list); err != nil {
+		return nil, err
+	}
+	return list.Items, nil
+}
+
+func buildMHCStatuses(mhcs []unstructured.Unstructured) []MachineHealthCheckStatus {
+	out := make([]MachineHealthCheckStatus, 0, len(mhcs))
+	for _, mhc := range mhcs {
+		name, _, _ := unstructured.NestedString(mhc.Object, "metadata", "name")
+		maxUnhealthy, _, _ := unstructured.NestedString(mhc.Object, "spec", "maxUnhealthy")
+
+		status, _, _ := unstructured.NestedMap(mhc.Object, "status")
+		expected  := intField(status, "expectedMachines")
+		healthy   := intField(status, "currentHealthy")
+		allowed   := intField(status, "remediationsAllowed")
+
+		out = append(out, MachineHealthCheckStatus{
+			Name:                name,
+			MaxUnhealthy:        maxUnhealthy,
+			ExpectedMachines:    expected,
+			CurrentHealthy:      healthy,
+			RemediationsAllowed: allowed,
+			Remediating:         expected > 0 && healthy < expected,
+		})
+	}
+	return out
 }
 
 // ---- Machine provider error detection --------------------------------------

@@ -130,6 +130,15 @@ interface UpgradeBlocker {
   elapsedSeconds?: number;
 }
 
+interface MachineHealthCheckStatus {
+  name: string;
+  maxUnhealthy: string;
+  expectedMachines: number;
+  currentHealthy: number;
+  remediationsAllowed: number;
+  remediating: boolean;
+}
+
 interface UpgradeSnapshot {
   phase: string;
   targetVersion?: string;
@@ -141,6 +150,7 @@ interface UpgradeSnapshot {
   clusterOperators: OperatorsStatus;
   machinePools: MachinePoolStatus[];
   blockers?: UpgradeBlocker[];
+  machineHealthChecks?: MachineHealthCheckStatus[];
 }
 
 // ---- Colour helpers --------------------------------------------------------
@@ -721,6 +731,115 @@ const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
   );
 };
 
+// ---- MachineHealthCheck card -----------------------------------------------
+
+const MachineHealthChecksCard: React.FC<{ mhcs: MachineHealthCheckStatus[] }> = ({ mhcs }) => {
+  const [expanded, setExpanded] = React.useState(false);
+
+  const hasIssues = mhcs.some(m => m.remediating || m.remediationsAllowed === 0 && m.expectedMachines > 0);
+
+  const th: React.CSSProperties = {
+    padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    color: T.textSubtle, borderBottom: `1px solid ${T.border}`,
+    background: T.bgSecondary, whiteSpace: 'nowrap',
+  };
+
+  const mhcStatusLabel = (m: MachineHealthCheckStatus): { label: string; color: string } => {
+    if (m.expectedMachines === 0) return { label: 'No machines', color: T.textSubtle };
+    if (m.remediating && m.remediationsAllowed === 0) return { label: 'Paused — threshold hit', color: T.danger };
+    if (m.remediating) return { label: 'Remediating', color: T.warning };
+    return { label: 'Healthy', color: T.success };
+  };
+
+  return (
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden', marginBottom: 20, boxShadow: T.shadow }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+          padding: '10px 16px',
+          background: T.bgSecondary,
+          borderBottom: expanded ? `1px solid ${T.border}` : undefined,
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textSubtle }}>
+          Machine Health Checks
+        </span>
+        {hasIssues && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            padding: '1px 8px', borderRadius: T.radiusPill,
+            background: `${T.warning}22`, color: T.warning, border: `1px solid ${T.warning}55`,
+            fontWeight: 600, fontSize: 11,
+          }}>
+            {mhcs.filter(m => m.remediating).length} remediating
+          </span>
+        )}
+        <span style={{ marginLeft: 'auto', color: T.textSubtle, fontSize: 12 }}>
+          {mhcs.length} total · {expanded ? 'collapse ▲' : 'expand ▼'}
+        </span>
+      </div>
+
+      {expanded && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr>
+              <th style={th}>Name</th>
+              <th style={{ ...th, width: 110 }}>Max Unhealthy</th>
+              <th style={{ ...th, width: 100 }}>Expected</th>
+              <th style={{ ...th, width: 100 }}>Healthy</th>
+              <th style={{ ...th, width: 100 }}>Allowed</th>
+              <th style={th}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mhcs.map(m => {
+              const { label, color } = mhcStatusLabel(m);
+              const unhealthy = m.expectedMachines - m.currentHealthy;
+              const tdStyle: React.CSSProperties = {
+                padding: '8px 12px', borderBottom: `1px solid ${T.border}`, verticalAlign: 'middle',
+              };
+              return (
+                <tr key={m.name} style={{ borderLeft: m.remediating ? `3px solid ${color}` : '3px solid transparent' }}>
+                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 12 }}>{m.name}</td>
+                  <td style={{ ...tdStyle, color: T.textSubtle }}>{m.maxUnhealthy || '—'}</td>
+                  <td style={{ ...tdStyle, color: T.textSubtle }}>{m.expectedMachines}</td>
+                  <td style={{ ...tdStyle }}>
+                    <span style={{ color: unhealthy > 0 ? color : T.success, fontWeight: unhealthy > 0 ? 700 : 400 }}>
+                      {m.currentHealthy}
+                      {unhealthy > 0 && <span style={{ fontWeight: 400, color: T.textSubtle }}> / {m.expectedMachines}</span>}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, color: m.remediationsAllowed === 0 && m.expectedMachines > 0 ? T.danger : T.textSubtle }}>
+                    {m.remediationsAllowed}
+                  </td>
+                  <td style={{ ...tdStyle }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '1px 8px', borderRadius: T.radiusPill, fontSize: 12, fontWeight: 600,
+                      background: `${color}22`, color, border: `1px solid ${color}55`,
+                    }}>
+                      {label}
+                    </span>
+                    {m.remediating && m.remediationsAllowed === 0 && (
+                      <div style={{ fontSize: 11, color: T.danger, marginTop: 3, fontStyle: 'italic' }}>
+                        Remediation paused — unhealthy machines exceed MaxUnhealthy threshold.
+                        New remediations will not start until machines recover.
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
 // ---- Main component --------------------------------------------------------
 
 export const UpgradeStatusView: React.FC = () => {
@@ -951,6 +1070,11 @@ export const UpgradeStatusView: React.FC = () => {
                 ))}
               </div>
             </div>
+          )}
+
+          {/* ---- Machine Health Checks ---- */}
+          {snapshot.machineHealthChecks && snapshot.machineHealthChecks.length > 0 && (
+            <MachineHealthChecksCard mhcs={snapshot.machineHealthChecks} />
           )}
         </>
       )}
