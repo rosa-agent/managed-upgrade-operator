@@ -32,10 +32,12 @@ var registeredChecks = []DiagnosticsCheck{
 	// ---- Workload / drain blockers ----
 	&podDisruptionBudgetsCheck{},
 	&pdbMasterInfraExtendedCheck{},
+	&pdbDrainSafetyCheck{},
 	&stuckTerminatingPodsCheck{},
 	// ---- Configuration compatibility ----
 	&pausedMachineConfigPoolCheck{},
 	&installedOperatorMaxVersionCheck{},
 	&consolePluginReferencesCheck{},
 	&clusterAutoscalerConfigCheck{},
+	&upgradeConfigConsistencyCheck{},
 }

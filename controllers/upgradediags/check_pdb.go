@@ -17,6 +17,7 @@ import (
 const (
 	descPodDisruptionBudgets = "Checks for PDBs that block node drains, using the same HealthCheckPDB function MUO calls during upgrades. Combines direct PDB inspection with DVO metrics."
 	descPDBMasterInfra       = "Identifies PodDisruptionBudgets that could block master or infra node drain during an upgrade. Scans two sources: (1) pods currently running on master/infra nodes, and (2) DaemonSet pod templates that tolerate master/infra taints and will always be present on those nodes. Only flags PDBs that are restrictive (MaxUnavailable=0 or MinAvailable=100%) and are confirmed to cover workloads on those nodes."
+	descPDBDrainSafety       = "Surfaces per-PDB status.currentHealthy, status.desiredHealthy, and status.disruptionsAllowed to identify PDBs that will block node drain during upgrade. Applies the MCS-252 four-case safety predicate: a PDB with disruptionsAllowed=0 and currentHealthy>0 will stall drain until PDBForceDrainTimeout expires; a PDB with currentHealthy=0 is protecting no pods and is safe to bypass. Control-plane PDBs (openshift-etcd, openshift-kube-apiserver, etc.) are classified as Red Hat-owned; all others are customer-owned. Source: MCS-252/253 (control-plane drain safety) and ROSAENG-66714."
 )
 
 type podDisruptionBudgetsCheck struct{}
@@ -303,4 +304,92 @@ func dsMatchesPDBSelector(ds appsv1.DaemonSet, pdb policyv1.PodDisruptionBudget)
 		}
 	}
 	return true
+}
+
+// --- PodDisruptionBudgetsDrainSafety ---
+
+// cpNamespaces are the namespaces hosting control-plane components whose PDBs
+// are managed by Red Hat. PDBs in these namespaces are classified as
+// OwnerServiceTeam so the right team is engaged when they block drain.
+var cpNamespaces = map[string]bool{
+	"openshift-etcd":                    true,
+	"openshift-kube-apiserver":          true,
+	"openshift-kube-controller-manager": true,
+	"openshift-kube-scheduler":          true,
+}
+
+type pdbDrainSafetyCheck struct{}
+
+func (c *pdbDrainSafetyCheck) Name() string                 { return "PodDisruptionBudgetsDrainSafety" }
+func (c *pdbDrainSafetyCheck) Description() string           { return descPDBDrainSafety }
+func (c *pdbDrainSafetyCheck) DefaultTimeout() time.Duration { return 60 * time.Second }
+func (c *pdbDrainSafetyCheck) DefaultOwner() upgradev1alpha1.CheckOwner {
+	return upgradev1alpha1.OwnerCustomer
+}
+
+func (c *pdbDrainSafetyCheck) Run(ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) CheckOutput {
+	pdbList := &policyv1.PodDisruptionBudgetList{}
+	if err := deps.Client.List(ctx, pdbList); err != nil {
+		return CheckOutput{
+			Result: upgradev1alpha1.CheckResultError,
+			Error:  fmt.Sprintf("unable to list PodDisruptionBudgets: %v", err),
+			Owner:  upgradev1alpha1.OwnerServiceTeam,
+			Action: "Contact Red Hat support if PDB listing fails.",
+		}
+	}
+
+	var blocking, findings []string
+	hasServiceTeamBlocker := false
+
+	for _, pdb := range pdbList.Items {
+		key := fmt.Sprintf("%s/%s", pdb.Namespace, pdb.Name)
+		currentHealthy := pdb.Status.CurrentHealthy
+		desiredHealthy := pdb.Status.DesiredHealthy
+		allowed := pdb.Status.DisruptionsAllowed
+		isCP := cpNamespaces[pdb.Namespace]
+
+		switch {
+		case allowed == 0 && currentHealthy > 0:
+			// MCS-252 cases 2 (CP) and 4 (customer): PDB is protecting live healthy pods —
+			// drain will stall until PDBForceDrainTimeout.
+			owner := "customer"
+			if isCP {
+				owner = "redhat"
+				hasServiceTeamBlocker = true
+			}
+			msg := fmt.Sprintf("%s [owner=%s]: BLOCKING DRAIN — disruptionsAllowed=0 currentHealthy=%d desiredHealthy=%d",
+				key, owner, currentHealthy, desiredHealthy)
+			blocking = append(blocking, msg)
+			findings = append(findings, msg)
+
+		case allowed == 0 && currentHealthy == 0:
+			// MCS-252 case 1 (CP) and 3 (uninstalling): PDB blocks on paper but no healthy pods —
+			// safe to drain past this PDB.
+			findings = append(findings, fmt.Sprintf("%s: disruptionsAllowed=0 but currentHealthy=0 — safe (no pods to protect)", key))
+
+		default:
+			findings = append(findings, fmt.Sprintf("%s: disruptionsAllowed=%d currentHealthy=%d desiredHealthy=%d — ok",
+				key, allowed, currentHealthy, desiredHealthy))
+		}
+	}
+
+	if len(blocking) > 0 {
+		owner := upgradev1alpha1.OwnerCustomer
+		if hasServiceTeamBlocker {
+			owner = upgradev1alpha1.OwnerServiceTeam
+		}
+		return CheckOutput{
+			Result:   upgradev1alpha1.CheckResultWarning,
+			Summary:  fmt.Sprintf("%d PDB(s) will stall node drain (disruptionsAllowed=0, currentHealthy>0)", len(blocking)),
+			Findings: findings,
+			Owner:    owner,
+			Action:   "MUO will wait up to PDBForceDrainTimeout minutes before force-draining. For customer PDBs: coordinate with the application owner to scale up pods or temporarily relax the PDB. For Red Hat PDBs: contact Red Hat support.",
+		}
+	}
+
+	return CheckOutput{
+		Result:   upgradev1alpha1.CheckPassed,
+		Summary:  fmt.Sprintf("All %d PDB(s) allow node drain (disruptionsAllowed>0 or currentHealthy=0)", len(pdbList.Items)),
+		Findings: findings,
+	}
 }
