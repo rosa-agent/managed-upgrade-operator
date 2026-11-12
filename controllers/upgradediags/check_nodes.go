@@ -16,6 +16,7 @@ import (
 const (
 	descNodeHealth         = "Checks for manually cordoned worker nodes and nodes with memory, disk, or PID pressure taints that would block scheduling, using the same checks MUO runs before starting an upgrade."
 	descNodeHealthExtended = "In-depth node health analysis. Shows all worker nodes that are cordoned or have memory, disk, or PID pressure conditions that could block workload scheduling."
+	descWorkerNodeReady    = "Lists worker nodes that are not in Ready state or are SchedulingDisabled (excluding MUO-managed cordon). Unready workers with ClusterOperators that require compute can block upgrade convergence. Source: OHSS Case 10 (EOL/unready worker pools)."
 )
 
 type manuallyCordonedNodesCheck struct{}
@@ -110,6 +111,67 @@ func (c *manuallyCordonedNodesExtendedCheck) Run(ctx context.Context, deps Check
 	return CheckOutput{
 		Result:   upgradev1alpha1.CheckPassed,
 		Summary:  fmt.Sprintf("All %d worker node(s) are schedulable", len(nodes.Items)),
+		Findings: findings,
+	}
+}
+
+type workerNodeReadinessCheck struct{}
+
+func (c *workerNodeReadinessCheck) Name() string                 { return "WorkerNodeReadiness" }
+func (c *workerNodeReadinessCheck) Description() string           { return descWorkerNodeReady }
+func (c *workerNodeReadinessCheck) DefaultTimeout() time.Duration { return 0 }
+func (c *workerNodeReadinessCheck) DefaultOwner() upgradev1alpha1.CheckOwner {
+	return upgradev1alpha1.OwnerCustomer
+}
+
+func (c *workerNodeReadinessCheck) Run(ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) CheckOutput {
+	nodes := &corev1.NodeList{}
+	if err := deps.Client.List(ctx, nodes, &client.ListOptions{
+		Raw: &metav1.ListOptions{LabelSelector: "node-role.kubernetes.io/worker, !node-role.kubernetes.io/infra"},
+	}); err != nil {
+		return CheckOutput{
+			Result: upgradev1alpha1.CheckResultError,
+			Error:  fmt.Sprintf("unable to list worker nodes: %v", err),
+			Owner:  upgradev1alpha1.OwnerServiceTeam,
+			Action: "Contact Red Hat support if worker nodes cannot be listed.",
+		}
+	}
+
+	var unready []string
+	var findings []string
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		isReady := false
+		for _, cond := range node.Status.Conditions {
+			if cond.Type == corev1.NodeReady && cond.Status == corev1.ConditionTrue {
+				isReady = true
+				break
+			}
+		}
+		// A node cordoned by MUO during an active upgrade is expected; skip it.
+		if !isReady && !deps.Machinery.IsNodeUpgrading(node) {
+			reason := "NotReady"
+			if node.Spec.Unschedulable {
+				reason = "NotReady+SchedulingDisabled"
+			}
+			unready = append(unready, node.Name)
+			findings = append(findings, fmt.Sprintf("%s: %s", node.Name, reason))
+		} else {
+			findings = append(findings, fmt.Sprintf("%s: Ready", node.Name))
+		}
+	}
+
+	if len(unready) > 0 {
+		return CheckOutput{
+			Result:   upgradev1alpha1.CheckFailed,
+			Summary:  fmt.Sprintf("%d of %d worker node(s) are not Ready", len(unready), len(nodes.Items)),
+			Findings: findings,
+			Action:   "Investigate unready nodes with 'oc describe node <name>'. Unhealthy workers with compute-requiring ClusterOperators can block upgrade convergence.",
+		}
+	}
+	return CheckOutput{
+		Result:   upgradev1alpha1.CheckPassed,
+		Summary:  fmt.Sprintf("All %d worker node(s) are Ready", len(nodes.Items)),
 		Findings: findings,
 	}
 }

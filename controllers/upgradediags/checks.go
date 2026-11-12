@@ -9,21 +9,33 @@ package upgradediags
 // The framework (runCheck) handles timeout, panic recovery, timing, Description,
 // and Owner injection automatically.
 var registeredChecks = []DiagnosticsCheck{
+	// ---- Upgrade eligibility ----
 	&clusterVersionCheck{},
 	&upgradeTargetCheck{},
 	&upgradeTargetExtendedCheck{},
 	&upgradeInFlightCheck{},
+	&upgradeableConditionCheck{},
+	&adminAcksCheck{},
+	&pullSecretCheck{},
+	// ---- Cluster health gates ----
 	&clusterOperatorsCheck{},
 	&clusterOperatorsExtendedCheck{},
 	&criticalAlertsCheck{},
 	&criticalAlertsExtendedCheck{},
-	&podDisruptionBudgetsCheck{},
-	&pdbMasterInfraExtendedCheck{},
+	// ---- Node readiness ----
+	&workerNodeReadinessCheck{},
 	&manuallyCordonedNodesCheck{},
 	&manuallyCordonedNodesExtendedCheck{},
 	&nodeTaintsCheck{},
 	&nodeTaintsExtendedCheck{},
-	&upgradeableConditionCheck{},
-	&pullSecretCheck{},
-	&adminAcksCheck{},
+	&pendingCSRsCheck{},
+	// ---- Workload / drain blockers ----
+	&podDisruptionBudgetsCheck{},
+	&pdbMasterInfraExtendedCheck{},
+	&stuckTerminatingPodsCheck{},
+	// ---- Configuration compatibility ----
+	&pausedMachineConfigPoolCheck{},
+	&installedOperatorMaxVersionCheck{},
+	&consolePluginReferencesCheck{},
+	&clusterAutoscalerConfigCheck{},
 }
