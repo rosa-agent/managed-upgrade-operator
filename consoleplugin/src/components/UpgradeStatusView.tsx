@@ -14,7 +14,7 @@ const T = {
   warning:    'var(--pf-t--global--color--status--warning--default)',
   success:    'var(--pf-t--global--color--status--success--default)',
   info:       'var(--pf-t--global--color--status--info--default)',
-  textSubtle: 'var(--pf-t--global--color--text--subtle)',
+  textSubtle: T.textSubtle,
   textMuted:  'var(--pf-t--global--color--text--placeholder)',
   border:     'var(--pf-t--global--border--color--default)',
   bgSecondary:'var(--pf-t--global--background--color--secondary--default)',
@@ -160,7 +160,7 @@ const PHASE_COLORS: Record<string, string> = {
   'updated':        T.success,
   'done':           T.success,
   'available':      T.success,
-  'not-started':    'var(--pf-t--global--color--text--subtle)',
+  'not-started':    T.textSubtle,
   'upgrading':      T.info,
   'updating':       T.info,
   'control-plane':  T.info,
@@ -176,7 +176,7 @@ const PHASE_COLORS: Record<string, string> = {
   'failed':         T.danger,
 };
 
-const phaseColor  = (p: string) => PHASE_COLORS[p] ?? 'var(--pf-t--global--color--text--subtle)';
+const phaseColor  = (p: string) => PHASE_COLORS[p] ?? T.textSubtle;
 const phaseLabel  = (p: string) => p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
 const PhaseBadge: React.FC<{ phase: string; size?: 'sm' | 'md' }> = ({ phase, size = 'sm' }) => {
@@ -213,10 +213,10 @@ const SectionHeader: React.FC<{ title: string; badge?: React.ReactNode; meta?: s
   <div style={{
     display: 'flex', alignItems: 'center', gap: 10,
     padding: '8px 16px',
-    background: 'var(--pf-t--global--color--text--subtle)',
+    background: T.bgSecondary,
     borderBottom: `1px solid ${T.border}`,
     fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em',
-    color: 'var(--pf-t--global--color--text--subtle)',
+    color: T.textSubtle,
   }}>
     <span>{title}</span>
     {badge}
@@ -610,63 +610,63 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
   const countStyle = (highlight?: boolean): React.CSSProperties => ({
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     padding: '6px 14px',
-    background: 'var(--pf-t--global--color--text--subtle)',
+    background: T.bgSecondary,
     borderRadius: T.radiusMd,
-    border: `1px solid ${highlight ? color + '55' : 'var(--pf-t--global--color--text--subtle)'}`,
+    border: `1px solid ${highlight ? color + '55' : T.border}`,
   });
 
   return (
     <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radiusMd, overflow: 'hidden', marginBottom: 12 }}>
-      {/* Pool header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '10px 14px',
-        background: 'var(--pf-t--global--color--text--subtle)',
-        borderBottom: expanded ? `1px solid ${T.border}` : undefined,
-        borderLeft: `4px solid ${color}`,
-      }}>
+      {/* Pool header — fully clickable when nodes are present */}
+      <div
+        onClick={() => pool.nodes && pool.nodes.length > 0 && setExpanded(e => !e)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 14px',
+          background: T.bgSecondary,
+          borderBottom: expanded ? `1px solid ${T.border}` : undefined,
+          borderLeft: `4px solid ${color}`,
+          cursor: pool.nodes && pool.nodes.length > 0 ? 'pointer' : 'default',
+          userSelect: 'none',
+        }}
+      >
         <span style={{ fontWeight: 700, fontSize: 14 }}>{pool.name}</span>
         <PhaseBadge phase={pool.phase} size="sm" />
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {/* Count pills */}
           <span style={countStyle(pool.updated < pool.total)}>
             <span style={{ fontSize: 16, fontWeight: 700, color: pool.updated === pool.total ? T.success : T.info }}>
               {pool.updated}/{pool.total}
             </span>
-            <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>updated</span>
+            <span style={{ fontSize: 10, color: T.textSubtle }}>updated</span>
           </span>
           <span style={countStyle()}>
             <span style={{ fontSize: 16, fontWeight: 700 }}>{pool.ready}</span>
-            <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>ready</span>
+            <span style={{ fontSize: 10, color: T.textSubtle }}>ready</span>
           </span>
           {pool.unavailable > 0 && (
             <span style={countStyle(true)}>
               <span style={{ fontSize: 16, fontWeight: 700, color: T.warning }}>{pool.unavailable}</span>
-              <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>unavailable</span>
+              <span style={{ fontSize: 10, color: T.textSubtle }}>unavailable</span>
             </span>
           )}
           {pool.degraded > 0 && (
             <span style={countStyle(true)}>
               <span style={{ fontSize: 16, fontWeight: 700, color: T.danger }}>{pool.degraded}</span>
-              <span style={{ fontSize: 10, color: 'var(--pf-t--global--color--text--subtle)' }}>degraded</span>
+              <span style={{ fontSize: 10, color: T.textSubtle }}>degraded</span>
             </span>
           )}
           {pool.elapsedSeconds !== undefined && pool.elapsedSeconds > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)', alignSelf: 'center', marginLeft: 4 }}>
+            <span style={{ fontSize: 12, color: T.textSubtle, marginLeft: 4 }}>
               {fmtElapsed(pool.elapsedSeconds)}
             </span>
           )}
+          {pool.nodes && pool.nodes.length > 0 && (
+            <span style={{ color: T.textSubtle, fontSize: 12, marginLeft: 4 }}>
+              {expanded ? '▼' : '▶'} {pool.nodes.length} node{pool.nodes.length !== 1 ? 's' : ''}
+            </span>
+          )}
         </span>
-        {pool.nodes && pool.nodes.length > 0 && (
-          <Button
-            variant="plain"
-            aria-label={expanded ? 'Collapse nodes' : 'Expand nodes'}
-            onClick={() => setExpanded(e => !e)}
-            style={{ color: 'var(--pf-t--global--color--text--subtle)', padding: '0 4px' }}
-          >
-            {expanded ? <CaretDownIcon /> : <CaretRightIcon />}
-          </Button>
-        )}
       </div>
 
       {/* Node table */}
@@ -702,12 +702,12 @@ const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
         style={{
           display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
           padding: '10px 16px',
-          background: expanded ? 'var(--pf-t--global--color--text--subtle)' : 'var(--pf-t--global--color--text--subtle)',
+          background: T.bgSecondary,
           borderBottom: expanded ? `1px solid ${T.border}` : undefined,
           userSelect: 'none',
         }}
       >
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--pf-t--global--color--text--subtle)' }}>
+        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: T.textSubtle }}>
           Cluster Operators
         </span>
         <PhaseBadge phase={ops.phase} />
@@ -717,11 +717,11 @@ const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
           {countPill(ops.degraded,     'degraded',    T.danger)}
         </span>
         {ops.elapsedSeconds ? (
-          <span style={{ fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)', marginLeft: 4 }}>
+          <span style={{ fontSize: 12, color: T.textSubtle, marginLeft: 4 }}>
             {fmtElapsed(ops.elapsedSeconds)} elapsed
           </span>
         ) : null}
-        <span style={{ marginLeft: 'auto', color: 'var(--pf-t--global--color--text--subtle)', fontSize: 12 }}>
+        <span style={{ marginLeft: 'auto', color: T.textSubtle, fontSize: 12 }}>
           {ops.total} total · {expanded ? 'collapse ▲' : 'expand ▼'}
         </span>
       </div>
@@ -920,7 +920,7 @@ export const UpgradeStatusView: React.FC = () => {
           Refresh
         </Button>
         {lastRefresh && (
-          <span style={{ fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)' }}>
+          <span style={{ fontSize: 12, color: T.textSubtle }}>
             Last updated {lastRefresh.toLocaleTimeString()} · auto-refreshes every 30s
           </span>
         )}
@@ -943,7 +943,7 @@ export const UpgradeStatusView: React.FC = () => {
             <div style={{ padding: '14px 16px', display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               {/* Version */}
               <div>
-                <div style={{ fontSize: 11, color: 'var(--pf-t--global--color--text--subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: T.textSubtle, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                   Current Version
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'monospace' }}>
@@ -952,9 +952,9 @@ export const UpgradeStatusView: React.FC = () => {
               </div>
               {snapshot.targetVersion && snapshot.targetVersion !== snapshot.currentVersion && (
                 <>
-                  <div style={{ alignSelf: 'center', color: 'var(--pf-t--global--color--text--subtle)', fontSize: 20 }}>→</div>
+                  <div style={{ alignSelf: 'center', color: T.textSubtle, fontSize: 20 }}>→</div>
                   <div>
-                    <div style={{ fontSize: 11, color: 'var(--pf-t--global--color--text--subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                    <div style={{ fontSize: 11, color: T.textSubtle, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                       Target Version
                     </div>
                     <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'monospace', color: T.info }}>
@@ -965,7 +965,7 @@ export const UpgradeStatusView: React.FC = () => {
               )}
               {snapshot.elapsedSeconds !== undefined && snapshot.elapsedSeconds > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: 'var(--pf-t--global--color--text--subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, color: T.textSubtle, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
                     Elapsed
                   </div>
                   <div style={{ fontSize: 18, fontWeight: 600 }}>
@@ -980,11 +980,11 @@ export const UpgradeStatusView: React.FC = () => {
                     || (ph === 'control-plane' && ['operators', 'worker-upgrade', 'complete'].includes(snapshot.phase))
                     || (ph === 'operators' && ['worker-upgrade', 'complete'].includes(snapshot.phase));
                   const active = snapshot.phase === ph;
-                  const color = done ? T.success : active ? T.info : 'var(--pf-t--global--color--text--subtle)';
+                  const color = done ? T.success : active ? T.info : T.textSubtle;
                   return (
                     <React.Fragment key={ph}>
                       {ph !== 'control-plane' && (
-                        <span style={{ color: 'var(--pf-t--global--color--text--subtle)', fontSize: 12 }}>→</span>
+                        <span style={{ color: T.textSubtle, fontSize: 12 }}>→</span>
                       )}
                       <span style={{
                         fontSize: 11, fontWeight: 600,
@@ -1003,7 +1003,7 @@ export const UpgradeStatusView: React.FC = () => {
               <div style={{
                 padding: '8px 16px',
                 borderTop: `1px solid ${T.border}`,
-                fontSize: 12, color: 'var(--pf-t--global--color--text--subtle)',
+                fontSize: 12, color: T.textSubtle,
                 fontStyle: 'italic',
               }}>
                 {snapshot.cvoMessage}

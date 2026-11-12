@@ -200,27 +200,46 @@ export const UpgradeDiagsPage: React.FC = () => {
         </div>
       </PageSection>
 
-      <PageSection variant={PageSectionVariants.light} style={{ paddingTop: 12, paddingBottom: 12, borderBottom: `1px solid ${T.border}` }}>
+      <PageSection style={{ paddingTop: 0, paddingBottom: 0 }}>
         {activeTab === 'checks' && (
-          <div style={{ fontSize: 13, color: T.textSubtle, maxWidth: 820, lineHeight: 1.6 }}>
-            <strong style={{ color: T.textSubtle }}>Diagnostics Checks</strong>
-            {' — '}
-            Run a read-only preflight analysis against a target version and channel before committing to an upgrade.
-            {' '}
-            <strong>No upgrade is triggered</strong> — checks only inspect current cluster state to identify potential roadblocks such as
-            unsatisfied admin acknowledgements, critical alerts, PodDisruptionBudgets that could stall node drains, and pull secret validity.
-            Use this to build confidence and surface remediation steps before scheduling a maintenance window.
+          <div style={{
+            display: 'flex', gap: 14, alignItems: 'flex-start',
+            padding: '12px 16px',
+            background: T.infoBg,
+            borderBottom: `1px solid ${T.border}`,
+          }}>
+            <span style={{ fontSize: 20, lineHeight: 1, marginTop: 2 }}>ℹ</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
+                Read-only — no upgrade is triggered
+              </div>
+              <div style={{ fontSize: 13, color: T.textSubtle, lineHeight: 1.55, maxWidth: 860 }}>
+                Preflight checks inspect current cluster state to identify potential roadblocks before an upgrade:
+                admin acknowledgements, critical alerts, PodDisruptionBudgets that could stall node drains,
+                and pull secret validity. Use these results to build confidence and address issues before scheduling
+                a maintenance window.
+              </div>
+            </div>
           </div>
         )}
         {activeTab === 'status' && (
-          <div style={{ fontSize: 13, color: T.textSubtle, maxWidth: 820, lineHeight: 1.6 }}>
-            <strong style={{ color: T.textSubtle }}>Upgrade Status</strong>
-            {' — '}
-            Live snapshot of an in-progress or recently completed cluster upgrade.
-            {' '}
-            Tracks ClusterVersion, ClusterOperator, MachineConfigPool, and node progression in real time.
-            Click any operator row to inspect its full condition set; click any node row to see PDB drain blockers,
-            cloud-provider errors, and K8s node conditions with actionable remediation guidance.
+          <div style={{
+            display: 'flex', gap: 14, alignItems: 'flex-start',
+            padding: '12px 16px',
+            background: T.bgSecondary,
+            borderBottom: `1px solid ${T.border}`,
+          }}>
+            <span style={{ fontSize: 20, lineHeight: 1, marginTop: 2, color: T.info }}>⟳</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
+                Live upgrade snapshot · auto-refreshes every 30s
+              </div>
+              <div style={{ fontSize: 13, color: T.textSubtle, lineHeight: 1.55, maxWidth: 860 }}>
+                Tracks ClusterVersion, ClusterOperators, MachineConfigPools, nodes, and MachineHealthChecks in real time.
+                Click any operator or node row to drill into conditions, PDB drain blockers, cloud-provider errors,
+                and K8s node conditions — with actionable remediation guidance inline.
+              </div>
+            </div>
           </div>
         )}
       </PageSection>
