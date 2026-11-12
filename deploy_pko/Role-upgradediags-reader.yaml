@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: ocm-agent-readiness
+  name: upgradediags-reader
   namespace: openshift-managed-upgrade-operator
   annotations:
     package-operator.run/phase: rbac
@@ -10,17 +10,8 @@ rules:
 - apiGroups:
   - upgrade.managed.openshift.io
   resources:
-  - upgradereadinesschecks
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - upgrade.managed.openshift.io
-  resources:
-  - upgradereadinesschecks/status
+  - upgradediagschecks
+  - upgradediagschecks/status
   verbs:
   - get
   - list

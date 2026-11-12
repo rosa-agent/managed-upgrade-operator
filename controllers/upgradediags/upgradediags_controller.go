@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	"context"
@@ -21,12 +21,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-var log = logf.Log.WithName("controller_upgradereadinesscheck")
+var log = logf.Log.WithName("controller_upgradediagscheck")
 
 const (
-	maxReadinessChecks    = 10
-	readinessCheckTTL     = 24 * time.Hour
-	deleteAfterAnnotation = "readiness.managed.openshift.io/delete-after"
+	maxDiagsChecks    = 10
+	diagsCheckTTL     = 24 * time.Hour
+	deleteAfterAnnotation = "upgradediags.managed.openshift.io/delete-after"
 )
 
 // ocmOnlyChecks lists checks that require OCM API access and therefore cannot run
@@ -44,8 +44,8 @@ const (
 //     require the OCM API (ListGateAgreements).
 var _ = "ocmOnlyChecks — see comment above"
 
-// ReconcileUpgradeReadinessCheck reconciles UpgradeReadinessCheck objects.
-type ReconcileUpgradeReadinessCheck struct {
+// ReconcileUpgradeDiagsCheck reconciles UpgradeDiagsCheck objects.
+type ReconcileUpgradeDiagsCheck struct {
 	Client               client.Client
 	Scheme               *runtime.Scheme
 	MetricsClientBuilder metrics.MetricsBuilder
@@ -54,25 +54,25 @@ type ReconcileUpgradeReadinessCheck struct {
 	DvoClientBuilder     dvo.DvoClientBuilder
 }
 
-func (r *ReconcileUpgradeReadinessCheck) pruneAndCount(ctx context.Context, namespace, skipName string, logger logr.Logger) (int, error) {
-	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
+func (r *ReconcileUpgradeDiagsCheck) pruneAndCount(ctx context.Context, namespace, skipName string, logger logr.Logger) (int, error) {
+	list := &upgradev1alpha1.UpgradeDiagsCheckList{}
 	if err := r.Client.List(ctx, list, client.InNamespace(namespace)); err != nil {
-		return 0, fmt.Errorf("listing UpgradeReadinessChecks: %w", err)
+		return 0, fmt.Errorf("listing UpgradeDiagsChecks: %w", err)
 	}
 	now := time.Now()
 	remaining := 0
 	for i := range list.Items {
 		cr := &list.Items[i]
-		expired := cr.CreationTimestamp.Time.Add(readinessCheckTTL).Before(now)
+		expired := cr.CreationTimestamp.Time.Add(diagsCheckTTL).Before(now)
 		if ann := cr.Annotations[deleteAfterAnnotation]; ann != "" {
 			if t, err := time.Parse(time.RFC3339, ann); err == nil && t.Before(now) {
 				expired = true
 			}
 		}
 		if expired && cr.Name != skipName {
-			logger.Info("Pruning expired UpgradeReadinessCheck", "name", cr.Name)
+			logger.Info("Pruning expired UpgradeDiagsCheck", "name", cr.Name)
 			if err := r.Client.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
-				logger.Error(err, "Failed to prune expired UpgradeReadinessCheck", "name", cr.Name)
+				logger.Error(err, "Failed to prune expired UpgradeDiagsCheck", "name", cr.Name)
 			}
 			continue
 		}
@@ -81,7 +81,7 @@ func (r *ReconcileUpgradeReadinessCheck) pruneAndCount(ctx context.Context, name
 	return remaining, nil
 }
 
-func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
+func (r *ReconcileUpgradeDiagsCheck) Reconcile(ctx context.Context, req reconcile.Request) (result reconcile.Result, err error) {
 	logger := log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
 
 	defer func() {
@@ -91,9 +91,9 @@ func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reco
 		}
 	}()
 
-	logger.Info("Reconciling UpgradeReadinessCheck")
+	logger.Info("Reconciling UpgradeDiagsCheck")
 
-	instance := &upgradev1alpha1.UpgradeReadinessCheck{}
+	instance := &upgradev1alpha1.UpgradeDiagsCheck{}
 	if err := r.Client.Get(ctx, req.NamespacedName, instance); err != nil {
 		if apierrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
@@ -106,20 +106,20 @@ func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reco
 	}
 
 	if total, listErr := r.pruneAndCount(ctx, req.Namespace, instance.Name, logger); listErr != nil {
-		logger.Error(listErr, "Could not list UpgradeReadinessChecks; skipping limit enforcement")
-	} else if total >= maxReadinessChecks {
+		logger.Error(listErr, "Could not list UpgradeDiagsChecks; skipping limit enforcement")
+	} else if total >= maxDiagsChecks {
 		now := metav1.NewTime(time.Now())
 		if instance.Status.StartedAt == nil {
 			instance.Status.StartedAt = &now
 		}
 		instance.Status.CompletedAt = &now
-		instance.Status.Checks = []upgradev1alpha1.ReadinessCheckResult{{
+		instance.Status.Checks = []upgradev1alpha1.DiagsCheckResult{{
 			Name:           "LimitCheck",
 			Result:         upgradev1alpha1.CheckResultError,
 			TimeoutSeconds: 0,
 			Execution: upgradev1alpha1.CheckExecution{
 				State: upgradev1alpha1.CheckError,
-				Error: fmt.Sprintf("too many UpgradeReadinessCheck CRs (%d/%d). Delete completed checks before creating new ones.", total, maxReadinessChecks),
+				Error: fmt.Sprintf("too many UpgradeDiagsCheck CRs (%d/%d). Delete completed checks before creating new ones.", total, maxDiagsChecks),
 			},
 		}}
 		if err := r.Client.Status().Update(ctx, instance); err != nil {
@@ -146,12 +146,12 @@ func (r *ReconcileUpgradeReadinessCheck) Reconcile(ctx context.Context, req reco
 		return reconcile.Result{}, err
 	}
 
-	logger.Info("UpgradeReadinessCheck completed", "totalChecks", len(checks))
+	logger.Info("UpgradeDiagsCheck completed", "totalChecks", len(checks))
 	return reconcile.Result{}, nil
 }
 
 // applyAggregates computes overall result counts and sets the Complete condition.
-func applyAggregates(status *upgradev1alpha1.UpgradeReadinessCheckStatus, checks []upgradev1alpha1.ReadinessCheckResult, now metav1.Time) {
+func applyAggregates(status *upgradev1alpha1.UpgradeDiagsCheckStatus, checks []upgradev1alpha1.DiagsCheckResult, now metav1.Time) {
 	var passed, warned, failed, errored int
 	for _, c := range checks {
 		switch c.Result {
@@ -184,7 +184,7 @@ func applyAggregates(status *upgradev1alpha1.UpgradeReadinessCheckStatus, checks
 
 	msg := fmt.Sprintf("%d passed, %d warned, %d failed, %d errored", passed, warned, failed, errored)
 	status.Conditions = []metav1.Condition{{
-		Type:               upgradev1alpha1.ReadinessCompleteCondition,
+		Type:               upgradev1alpha1.DiagsCompleteCondition,
 		Status:             metav1.ConditionTrue,
 		Reason:             string(overall),
 		Message:            msg,
@@ -192,11 +192,11 @@ func applyAggregates(status *upgradev1alpha1.UpgradeReadinessCheckStatus, checks
 	}}
 }
 
-func (r *ReconcileUpgradeReadinessCheck) runChecks(
+func (r *ReconcileUpgradeDiagsCheck) runChecks(
 	ctx context.Context,
-	instance *upgradev1alpha1.UpgradeReadinessCheck,
+	instance *upgradev1alpha1.UpgradeDiagsCheck,
 	logger logr.Logger,
-) []upgradev1alpha1.ReadinessCheckResult {
+) []upgradev1alpha1.DiagsCheckResult {
 	deps := CheckDependencies{
 		Client:               r.Client,
 		MetricsClientBuilder: r.MetricsClientBuilder,
@@ -215,7 +215,7 @@ func (r *ReconcileUpgradeReadinessCheck) runChecks(
 		defer cancel()
 	}
 
-	var results []upgradev1alpha1.ReadinessCheckResult
+	var results []upgradev1alpha1.DiagsCheckResult
 	for _, check := range registeredChecks {
 		timeout := resolveCheckTimeout(check, instance.Spec)
 		if runCtx.Err() != nil {
@@ -243,9 +243,9 @@ func checkAllowed(name string, allowlist []string) bool {
 	return false
 }
 
-func (r *ReconcileUpgradeReadinessCheck) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ReconcileUpgradeDiagsCheck) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&upgradev1alpha1.UpgradeReadinessCheck{}).
+		For(&upgradev1alpha1.UpgradeDiagsCheck{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 2}).
 		Complete(r)
 }

@@ -13,7 +13,7 @@ export interface CheckExecution {
   error?: string;
 }
 
-export interface ReadinessCheckResult {
+export interface DiagsCheckResult {
   name: string;
   description?: string;
   result: CheckResult;
@@ -23,7 +23,7 @@ export interface ReadinessCheckResult {
   execution: CheckExecution;
 }
 
-export interface UpgradeReadinessCheckStatus {
+export interface UpgradeDiagsCheckStatus {
   startedAt?: string;
   completedAt?: string;
   overallResult?: CheckResult;
@@ -31,14 +31,14 @@ export interface UpgradeReadinessCheckStatus {
   checksWarned?: number;
   checksFailed?: number;
   checksErrored?: number;
-  checks?: ReadinessCheckResult[];
+  checks?: DiagsCheckResult[];
 }
 
-export interface UpgradeReadinessCheck extends K8sResourceCommon {
+export interface UpgradeDiagsCheck extends K8sResourceCommon {
   spec: {
     desired: { version: string; channel: string };
     type: 'OSD' | 'ARO';
     checks?: string[];
   };
-  status?: UpgradeReadinessCheckStatus;
+  status?: UpgradeDiagsCheckStatus;
 }

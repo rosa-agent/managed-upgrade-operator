@@ -4,11 +4,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// UpgradeReadinessCheckSpec defines the target upgrade to check readiness for.
+// UpgradeDiagsCheckSpec defines the target upgrade to run diagnostics for.
 // It embeds UpgradeConfigSpec so that all UpgradeConfig fields (type, desired version,
-// PDBForceDrainTimeout, etc.) are inherited automatically. Fields like upgradeAt and
-// capacityReservation are present but unused by the readiness controller.
-type UpgradeReadinessCheckSpec struct {
+// PDBForceDrainTimeout, etc.) are inherited automatically.
+type UpgradeDiagsCheckSpec struct {
 	UpgradeConfigSpec `json:",inline"`
 
 	// DefaultCheckTimeoutSeconds is the per-check timeout fallback used when a check
@@ -56,7 +55,7 @@ const (
 	OwnerServiceTeam CheckOwner = "service-team"
 )
 
-// CheckResult is the top-level health verdict for a readiness check.
+// CheckResult is the top-level health verdict for a diagnostics check.
 // +kubebuilder:validation:Enum={"Passed","Warning","Failed","Error","Skipped","TimedOut","Unknown"}
 type CheckResult string
 
@@ -64,8 +63,7 @@ const (
 	// CheckPassed means the cluster is healthy for this check dimension.
 	CheckPassed CheckResult = "Passed"
 	// CheckResultWarning means the check completed and the cluster can proceed, but the consumer
-	// should be aware of a non-blocking condition (e.g. stale CVO cache, conditional update risks
-	// that do not apply to this cluster, or a discrepancy between cached and live data).
+	// should be aware of a non-blocking condition.
 	CheckResultWarning CheckResult = "Warning"
 	// CheckFailed means the cluster has a health issue that may block an upgrade.
 	CheckFailed CheckResult = "Failed"
@@ -79,7 +77,7 @@ const (
 	CheckResultUnknown CheckResult = "Unknown"
 )
 
-// CheckExecution describes the runtime execution of a single readiness check.
+// CheckExecution describes the runtime execution of a single diagnostics check.
 type CheckExecution struct {
 	// State is whether the check machinery ran successfully: Completed, Error, or Skipped.
 	State CheckExecutionState `json:"state"`
@@ -93,29 +91,20 @@ type CheckExecution struct {
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
 
 	// Summary is a concise human-readable explanation of what the check found.
-	// Examples:
-	//   Passed: "All 34 cluster operators healthy"
-	//   Failed: "2 degraded operators found"
-	//   Error:  "" (see Error field instead)
 	// +kubebuilder:validation:Optional
 	Summary string `json:"summary,omitempty"`
 
 	// Findings contains detailed per-item observations from the check.
-	// Examples:
-	//   Passed: ["authentication: Available=True, Degraded=False", ...]
-	//   Failed: ["kube-apiserver: Degraded=True", "etcd: Degraded=True"]
-	//   Error:  []
 	// +kubebuilder:validation:Optional
 	Findings []string `json:"findings,omitempty"`
 
 	// Error contains the reason a check could not run (State=Error only).
-	// This is an infrastructure/transient failure, not a cluster health finding.
 	// +kubebuilder:validation:Optional
 	Error string `json:"error,omitempty"`
 }
 
-// ReadinessCheckResult holds the result and execution details for a single readiness check.
-type ReadinessCheckResult struct {
+// DiagsCheckResult holds the result and execution details for a single diagnostics check.
+type DiagsCheckResult struct {
 	// Name identifies the check (e.g. "CriticalAlerts", "ClusterOperators").
 	Name string `json:"name"`
 
@@ -124,16 +113,13 @@ type ReadinessCheckResult struct {
 	Description string `json:"description,omitempty"`
 
 	// Result is the health verdict: Passed, Failed, Error, Skipped, or Unknown.
-	// This is the top-level signal — no need to inspect Execution to determine check outcome.
 	Result CheckResult `json:"result"`
 
 	// Owner identifies who is responsible for resolving this check when it fails or errors.
-	// "customer" means the customer must act; "service-team" means Red Hat must investigate.
 	// +kubebuilder:validation:Optional
 	Owner CheckOwner `json:"owner,omitempty"`
 
 	// Action is the recommended next step when Result is Failed or Error.
-	// Empty when the check passed or was skipped.
 	// +kubebuilder:validation:Optional
 	Action string `json:"action,omitempty"`
 
@@ -145,55 +131,45 @@ type ReadinessCheckResult struct {
 }
 
 const (
-	// ReadinessCompleteCondition is True when all checks have finished running.
+	// DiagsCompleteCondition is True when all checks have finished running.
 	// The Reason field carries the outcome: Passed, Warning, or Failed.
-	// Use with: oc wait --for=condition=Complete --timeout=5m pfc/<name>
-	ReadinessCompleteCondition = "Complete"
+	// Use with: oc wait --for=condition=Complete --timeout=5m udc/<name>
+	DiagsCompleteCondition = "Complete"
 )
 
-// UpgradeReadinessCheckStatus reports the outcome of all checks.
-type UpgradeReadinessCheckStatus struct {
+// UpgradeDiagsCheckStatus reports the outcome of all diagnostics checks.
+type UpgradeDiagsCheckStatus struct {
 	// +kubebuilder:validation:Optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// +kubebuilder:validation:Optional
 	CompletedAt *metav1.Time `json:"completedAt,omitempty"`
 
 	// OverallResult is the top-level verdict once all checks are complete.
-	// Passed: all checks passed (warnings may be present).
-	// Warning: at least one check warned but none failed or errored.
-	// Failed: at least one check failed or errored.
 	// +kubebuilder:validation:Optional
 	OverallResult CheckResult `json:"overallResult,omitempty"`
 
-	// ChecksPassed is the number of checks that returned Passed.
 	// +kubebuilder:validation:Optional
 	ChecksPassed int `json:"checksPassed,omitempty"`
-	// ChecksWarned is the number of checks that returned Warning.
 	// +kubebuilder:validation:Optional
 	ChecksWarned int `json:"checksWarned,omitempty"`
-	// ChecksFailed is the number of checks that returned Failed.
 	// +kubebuilder:validation:Optional
 	ChecksFailed int `json:"checksFailed,omitempty"`
-	// ChecksErrored is the number of checks that returned Error or could not run.
 	// +kubebuilder:validation:Optional
 	ChecksErrored int `json:"checksErrored,omitempty"`
 
 	// Conditions exposes the run state as standard Kubernetes conditions.
-	// The Complete condition becomes True when all checks finish; Reason carries
-	// the outcome (Passed, Warning, or Failed) and Message gives a summary.
-	// This enables: oc wait --for=condition=Complete --timeout=5m pfc/<name>
 	// +kubebuilder:validation:Optional
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// +kubebuilder:validation:Optional
-	Checks []ReadinessCheckResult `json:"checks,omitempty"`
+	Checks []DiagsCheckResult `json:"checks,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=upgradereadinesschecks,scope=Namespaced,shortName=urc
+// +kubebuilder:resource:path=upgradediagschecks,scope=Namespaced,shortName=udc
 // +kubebuilder:printcolumn:name="version",type="string",JSONPath=".spec.desired.version"
 // +kubebuilder:printcolumn:name="channel",type="string",JSONPath=".spec.desired.channel"
 // +kubebuilder:printcolumn:name="type",type="string",JSONPath=".spec.type"
@@ -203,25 +179,25 @@ type UpgradeReadinessCheckStatus struct {
 // +kubebuilder:printcolumn:name="failed",type="integer",JSONPath=".status.checksFailed"
 // +kubebuilder:printcolumn:name="completed",type="string",JSONPath=".status.completedAt"
 
-// UpgradeReadinessCheck is the Schema for on-demand cluster upgrade readiness checks.
+// UpgradeDiagsCheck is the Schema for on-demand cluster upgrade diagnostics checks.
 // Creating one runs pre-upgrade health checks without scheduling or starting an upgrade.
-type UpgradeReadinessCheck struct {
+type UpgradeDiagsCheck struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   UpgradeReadinessCheckSpec   `json:"spec,omitempty"`
-	Status UpgradeReadinessCheckStatus `json:"status,omitempty"`
+	Spec   UpgradeDiagsCheckSpec   `json:"spec,omitempty"`
+	Status UpgradeDiagsCheckStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// UpgradeReadinessCheckList contains a list of UpgradeReadinessCheck.
-type UpgradeReadinessCheckList struct {
+// UpgradeDiagsCheckList contains a list of UpgradeDiagsCheck.
+type UpgradeDiagsCheckList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []UpgradeReadinessCheck `json:"items"`
+	Items           []UpgradeDiagsCheck `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&UpgradeReadinessCheck{}, &UpgradeReadinessCheckList{})
+	SchemeBuilder.Register(&UpgradeDiagsCheck{}, &UpgradeDiagsCheckList{})
 }

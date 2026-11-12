@@ -8,7 +8,7 @@ import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@open
 
 // MUO's HTTP service creates the CR using the operator's service account,
 // bypassing the sre-regular-user-validation admission webhook.
-const READINESS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/readiness-checks';
+const UPGRADEDIAGS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-diags';
 
 interface ClusterVersion extends K8sResourceCommon {
   spec?: { channel?: string };
@@ -37,7 +37,7 @@ interface Props {
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const CHANNEL_RE = /^(stable|fast|candidate|eus)-\d+\.\d+$/;
 
-export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreated, initialValues }) => {
+export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreated, initialValues }) => {
   const [version, setVersion]               = React.useState('');
   const [channel, setChannel]               = React.useState('');
   const [platform, setPlatform]             = React.useState<'OSD' | 'ARO'>('OSD');
@@ -95,7 +95,7 @@ export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onC
     setSubmitting(true);
     setError(null);
     try {
-      await consoleFetch(READINESS_API, {
+      await consoleFetch(UPGRADEDIAGS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +109,7 @@ export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onC
       onClose();
       onCreated();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to create readiness check');
+      setError(e instanceof Error ? e.message : 'Failed to create upgrade diags check');
     } finally {
       setSubmitting(false);
     }
@@ -132,7 +132,7 @@ export const CreateReadinessCheckForm: React.FC<Props> = ({ isOpen, onClose, onC
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 18 }}>
-            {initialValues ? 'Re-run Upgrade Readiness' : 'Run Upgrade Readiness'}
+            {initialValues ? 'Re-run Upgrade Diagnostics' : 'Run Upgrade Diagnostics'}
           </div>
           {currentVersion && (
             <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>

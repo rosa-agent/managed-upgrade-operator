@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	"context"
@@ -28,7 +28,7 @@ type CheckDependencies struct {
 }
 
 // CheckOutput is returned by ReadinessCheck.Run.
-// The framework converts this into a full ReadinessCheckResult — the check author
+// The framework converts this into a full DiagsCheckResult — the check author
 // does not call withTiming, withDesc, or withOwner directly.
 type CheckOutput struct {
 	// Result is CheckPassed, CheckFailed, or CheckResultError.
@@ -55,7 +55,7 @@ type CheckOutput struct {
 //
 // The framework handles: timeout context, panic recovery, timing, Description,
 // and DefaultOwner. Your Run() only needs to return a CheckOutput.
-type ReadinessCheck interface {
+type DiagnosticsCheck interface {
 	// Name returns the unique check identifier used in CR status and the allowlist.
 	Name() string
 	// Description returns a human-readable explanation of what this check validates.

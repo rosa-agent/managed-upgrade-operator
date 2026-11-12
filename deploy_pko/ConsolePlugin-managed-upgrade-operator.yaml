@@ -6,7 +6,7 @@ metadata:
     package-operator.run/phase: deploy
     package-operator.run/collision-protection: IfNoController
 spec:
-  displayName: "Upgrade Readiness"
+  displayName: "Upgrade Diagnostics"
   backend:
     type: Service
     service:
@@ -20,6 +20,6 @@ spec:
       endpoint:
         type: Service
         service:
-          name: managed-upgrade-operator-readiness
+          name: managed-upgrade-operator-upgradediags
           namespace: openshift-managed-upgrade-operator
           port: 8443

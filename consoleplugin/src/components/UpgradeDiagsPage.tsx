@@ -5,15 +5,15 @@ import {
 } from '@patternfly/react-core';
 import { TrashIcon, SyncAltIcon, PlusCircleIcon, CaretDownIcon, CaretRightIcon } from '@patternfly/react-icons';
 import { useK8sWatchResource, consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
-import { type UpgradeReadinessCheck } from '../types';
+import { type UpgradeDiagsCheck } from '../types';
 import { StatusBadge } from './StatusBadge';
-import { UpgradeReadinessDetail } from './UpgradeReadinessDetail';
-import { CreateReadinessCheckForm, type InitialValues } from './CreateReadinessCheckForm';
+import { UpgradeDiagsDetail } from './UpgradeDiagsDetail';
+import { CreateDiagsCheckForm, type InitialValues } from './CreateDiagsCheckForm';
 
 const MUO_NS = 'openshift-managed-upgrade-operator';
-const REQUEST_ID_LABEL = 'readiness.managed.openshift.io/request-id';
-const DESCRIPTION_ANNOTATION = 'readiness.managed.openshift.io/description';
-const PROXY_BASE = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/readiness-checks';
+const UPGRADEDIAGS_REQUEST_ID_LABEL = 'upgradediags.managed.openshift.io/request-id';
+const UPGRADEDIAGS_DESCRIPTION_ANNOTATION = 'upgradediags.managed.openshift.io/description';
+const UPGRADEDIAGS_PROXY_BASE = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-diags';
 
 const relativeTime = (ts?: string): string => {
   if (!ts) return '—';
@@ -34,7 +34,7 @@ const resultBorder = (r?: string) => {
 };
 
 // Inline-styled colored summary counts — no PF CSS class dependency
-const CheckSummary: React.FC<{ pfc: UpgradeReadinessCheck }> = ({ pfc }) => {
+const CheckSummary: React.FC<{ pfc: UpgradeDiagsCheck }> = ({ pfc }) => {
   const s = pfc.status;
   if (!s || (!s.completedAt && !s.startedAt)) {
     return <Spinner size="sm" aria-label="Waiting to start" />;
@@ -68,7 +68,7 @@ const CheckSummary: React.FC<{ pfc: UpgradeReadinessCheck }> = ({ pfc }) => {
   );
 };
 
-export const UpgradeReadinessPage: React.FC = () => {
+export const UpgradeDiagsPage: React.FC = () => {
   const [createOpen, setCreateOpen]       = React.useState(false);
   const [createInitial, setCreateInitial] = React.useState<InitialValues | undefined>();
   const [expanded, setExpanded]           = React.useState<Record<string, boolean>>({});
@@ -76,8 +76,8 @@ export const UpgradeReadinessPage: React.FC = () => {
   const [deleting, setDeleting]           = React.useState<Record<string, boolean>>({});
   const [deleteError, setDeleteError]     = React.useState<string | null>(null);
 
-  const [checks, loaded, loadError] = useK8sWatchResource<UpgradeReadinessCheck[]>({
-    groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradeReadinessCheck' },
+  const [checks, loaded, loadError] = useK8sWatchResource<UpgradeDiagsCheck[]>({
+    groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradeDiagsCheck' },
     namespace: MUO_NS,
     isList: true,
   });
@@ -97,9 +97,9 @@ export const UpgradeReadinessPage: React.FC = () => {
     setCreateOpen(true);
   };
 
-  const handleDelete = async (pfc: UpgradeReadinessCheck) => {
+  const handleDelete = async (pfc: UpgradeDiagsCheck) => {
     const name = pfc.metadata?.name ?? '';
-    const requestId = pfc.metadata?.labels?.[REQUEST_ID_LABEL];
+    const requestId = pfc.metadata?.labels?.[UPGRADEDIAGS_REQUEST_ID_LABEL];
     if (!requestId) {
       setDeleteError(`"${name}" was not created via the HTTP API and cannot be deleted here.`);
       return;
@@ -107,19 +107,19 @@ export const UpgradeReadinessPage: React.FC = () => {
     setDeleting(prev => ({ ...prev, [name]: true }));
     setDeleteError(null);
     try {
-      await consoleFetch(`${PROXY_BASE}/${requestId}`, { method: 'DELETE' });
+      await consoleFetch(`${UPGRADEDIAGS_PROXY_BASE}/${requestId}`, { method: 'DELETE' });
     } catch (e: unknown) {
       setDeleteError(e instanceof Error ? e.message : 'Delete failed');
       setDeleting(prev => ({ ...prev, [name]: false }));
     }
   };
 
-  const handleRerun = (pfc: UpgradeReadinessCheck) => {
+  const handleRerun = (pfc: UpgradeDiagsCheck) => {
     openCreate({
       version:     pfc.spec.desired.version,
       channel:     pfc.spec.desired.channel,
       platform:    pfc.spec.type,
-      description: pfc.metadata?.annotations?.[DESCRIPTION_ANNOTATION] ?? '',
+      description: pfc.metadata?.annotations?.[UPGRADEDIAGS_DESCRIPTION_ANNOTATION] ?? '',
     });
   };
 
@@ -147,7 +147,7 @@ export const UpgradeReadinessPage: React.FC = () => {
   return (
     <Page>
       <PageSection variant={PageSectionVariants.light}>
-        <Title headingLevel="h1">Upgrade Readiness</Title>
+        <Title headingLevel="h1">Upgrade Diagnostics</Title>
       </PageSection>
 
       <PageSection>
@@ -166,7 +166,7 @@ export const UpgradeReadinessPage: React.FC = () => {
         {loaded && !loadError && sorted.length === 0 && !createOpen && (
           <EmptyState>
             <EmptyStateBody>
-              Run upgrade readiness checks to validate cluster readiness before upgrading.
+              Run upgrade upgrade diags checks to validate cluster health before upgrading.
             </EmptyStateBody>
             <Button variant="primary" onClick={() => openCreate()} style={{ marginTop: 16 }}>
               Run New Check
@@ -201,7 +201,7 @@ export const UpgradeReadinessPage: React.FC = () => {
                   const isExpanded  = !!expanded[name];
                   const isDeleting  = !!deleting[name];
                   const isHovered   = hoveredRow === name;
-                  const description = pfc.metadata?.annotations?.[DESCRIPTION_ANNOTATION];
+                  const description = pfc.metadata?.annotations?.[UPGRADEDIAGS_DESCRIPTION_ANNOTATION];
                   const border      = resultBorder(pfc.status?.overallResult);
 
                   const rowBg = isExpanded
@@ -287,7 +287,7 @@ export const UpgradeReadinessPage: React.FC = () => {
                               background: 'rgba(255,255,255,0.02)',
                             }}
                           >
-                            <UpgradeReadinessDetail pfc={pfc} />
+                            <UpgradeDiagsDetail pfc={pfc} />
                           </td>
                         </tr>
                       )}
@@ -326,7 +326,7 @@ export const UpgradeReadinessPage: React.FC = () => {
         )}
 
         {/* Inline form panel — no Modal, stays within iframe bounds */}
-        <CreateReadinessCheckForm
+        <CreateDiagsCheckForm
           isOpen={createOpen}
           onClose={() => setCreateOpen(false)}
           onCreated={() => setCreateOpen(false)}
@@ -337,4 +337,4 @@ export const UpgradeReadinessPage: React.FC = () => {
   );
 };
 
-export default UpgradeReadinessPage;
+export default UpgradeDiagsPage;

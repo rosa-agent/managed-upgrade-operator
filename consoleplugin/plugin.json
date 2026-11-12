@@ -1,10 +1,10 @@
 {
   "name": "managed-upgrade-operator",
   "version": "0.0.1",
-  "displayName": "Upgrade Readiness",
-  "description": "Run and view upgrade readiness checks for OpenShift clusters",
+  "displayName": "Upgrade Diagnostics",
+  "description": "Run and view upgrade diagnostics checks for OpenShift clusters",
   "exposedModules": {
-    "UpgradeReadinessPage": "./index"
+    "UpgradeDiagsPage": "./index"
   },
   "customTranslations": {}
 }

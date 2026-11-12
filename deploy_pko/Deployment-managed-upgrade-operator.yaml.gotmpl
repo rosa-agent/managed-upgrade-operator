@@ -41,9 +41,9 @@ spec:
             path: tls-ca-bundle.pem
           name: trusted-ca-bundle
         name: trusted-ca-bundle
-      - name: readiness-tls
+      - name: upgradediags-tls
         secret:
-          secretName: muo-readiness-tls
+          secretName: muo-upgradediags-tls
           optional: true
       containers:
       - name: managed-upgrade-operator
@@ -95,12 +95,12 @@ spec:
           name: trusted-ca-bundle
           readOnly: true
         terminationMessagePolicy: FallbackToLogsOnError
-      - name: upgrade-readiness
+      - name: upgradediags
         image: '{{ .config.image }}'
         command:
         - managed-upgrade-operator
         args:
-        - readiness
+        - upgradediags
         imagePullPolicy: Always
         resources:
           requests:
@@ -120,7 +120,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         volumeMounts:
-        - mountPath: /etc/readiness-tls
-          name: readiness-tls
+        - mountPath: /etc/upgradediags-tls
+          name: upgradediags-tls
           readOnly: true
         terminationMessagePolicy: FallbackToLogsOnError

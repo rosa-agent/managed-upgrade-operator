@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	"context"

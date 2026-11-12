@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 // registeredChecks is the ordered list of readiness checks that run against the cluster.
 //
@@ -8,7 +8,7 @@ package readiness
 //
 // The framework (runCheck) handles timeout, panic recovery, timing, Description,
 // and Owner injection automatically.
-var registeredChecks = []ReadinessCheck{
+var registeredChecks = []DiagnosticsCheck{
 	&clusterVersionCheck{},
 	&upgradeTargetCheck{},
 	&upgradeTargetExtendedCheck{},

@@ -6,16 +6,16 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.16.4
     package-operator.run/phase: crds
     package-operator.run/collision-protection: IfNoController
-  name: upgradereadinesschecks.upgrade.managed.openshift.io
+  name: upgradediagschecks.upgrade.managed.openshift.io
 spec:
   group: upgrade.managed.openshift.io
   names:
-    kind: UpgradeReadinessCheck
-    listKind: UpgradeReadinessCheckList
-    plural: upgradereadinesschecks
+    kind: UpgradeDiagsCheck
+    listKind: UpgradeDiagsCheckList
+    plural: upgradediagschecks
     shortNames:
       - pfc
-    singular: upgradereadinesscheck
+    singular: upgradediagscheck
   scope: Namespaced
   versions:
     - additionalPrinterColumns:
@@ -47,7 +47,7 @@ spec:
       name: v1alpha1
       schema:
         openAPIV3Schema:
-          description: UpgradeReadinessCheck is the Schema for on-demand cluster upgrade readiness checks.
+          description: UpgradeDiagsCheck is the Schema for on-demand cluster upgrade readiness checks.
           properties:
             apiVersion:
               description: |-
@@ -67,7 +67,7 @@ spec:
             metadata:
               type: object
             spec:
-              description: UpgradeReadinessCheckSpec defines the target upgrade to check readiness for.
+              description: UpgradeDiagsCheckSpec defines the target upgrade to check readiness for.
               properties:
                 capacityReservation:
                   description: CapacityReservation is reserved for future use.
@@ -116,7 +116,7 @@ spec:
                 - type
               type: object
             status:
-              description: UpgradeReadinessCheckStatus reports the outcome of all checks.
+              description: UpgradeDiagsCheckStatus reports the outcome of all checks.
               properties:
                 startedAt:
                   description: StartedAt is when the first check began running.

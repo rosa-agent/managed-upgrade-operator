@@ -57,7 +57,7 @@ import (
 	muocfg "github.com/openshift/managed-upgrade-operator/config"
 	"github.com/openshift/managed-upgrade-operator/controllers/machineconfigpool"
 	"github.com/openshift/managed-upgrade-operator/controllers/nodekeeper"
-	"github.com/openshift/managed-upgrade-operator/controllers/readiness"
+	"github.com/openshift/managed-upgrade-operator/controllers/upgradediags"
 	"github.com/openshift/managed-upgrade-operator/controllers/upgradeconfig"
 	cv "github.com/openshift/managed-upgrade-operator/pkg/clusterversion"
 	"github.com/openshift/managed-upgrade-operator/pkg/collector"
@@ -116,8 +116,8 @@ func printVersion() {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "readiness" {
-		runReadiness()
+	if len(os.Args) > 1 && os.Args[1] == "upgradediags" {
+		runUpgradeDiags()
 		return
 	}
 
@@ -310,14 +310,14 @@ func main() {
 	}
 }
 
-// runReadiness starts only the UpgradeReadinessCheck controller and HTTP API.
+// runUpgradeDiags starts only the UpgradeReadinessCheck controller and HTTP API.
 // It is designed to run as a separate container in the MUO pod so that any fault
 // in the new readiness code (OOM, panic, bug) is fully isolated from the core
 // upgrade controller process.
-func runReadiness() {
+func runUpgradeDiags() {
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
-	// os.Args[1] is "readiness"; parse remaining args (if any) as flags.
+	// os.Args[1] is "upgradediags"; parse remaining args (if any) as flags.
 	if err := flag.CommandLine.Parse(os.Args[2:]); err != nil {
 		setupLog.Error(err, "failed to parse flags")
 		os.Exit(1)
@@ -370,7 +370,7 @@ func runReadiness() {
 		os.Exit(1)
 	}
 
-	if err = (&readiness.ReconcileUpgradeReadinessCheck{
+	if err = (&upgradediags.ReconcileUpgradeDiagsCheck{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		MetricsClientBuilder: metrics.NewBuilder(),
@@ -378,7 +378,7 @@ func runReadiness() {
 		Machinery:            machinery.NewMachinery(),
 		DvoClientBuilder:     dvo.NewBuilder(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create UpgradeReadinessCheck controller")
+		setupLog.Error(err, "unable to create UpgradeDiagsCheck controller")
 		os.Exit(1)
 	}
 
@@ -399,13 +399,13 @@ func runReadiness() {
 				setupLog.Error(fmt.Errorf("%v", p), "panic in readiness HTTP service; HTTP API disabled")
 			}
 		}()
-		httpSrv := &readiness.ReadinessHTTPServer{
+		httpSrv := &upgradediags.UpgradeDiagsHTTPServer{
 			Client:    mgr.GetClient(),
 			Namespace: operatorNS,
 			Logger:    setupLog.WithName("readiness-http"),
 		}
 		if err := httpSrv.Start(stopCh); err != nil {
-			setupLog.Info("Readiness HTTP service unavailable", "reason", err.Error())
+			setupLog.Info("Upgrade diags HTTP service unavailable", "reason", err.Error())
 		}
 	}()
 

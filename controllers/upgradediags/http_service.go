@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	"context"
@@ -20,21 +20,21 @@ import (
 )
 
 const (
-	// readinessHTTPPort is the port the HTTP service listens on.
-	readinessHTTPPort = ":8443"
+	// diagsHTTPPort is the port the HTTP service listens on.
+	diagsHTTPPort = ":8443"
 
-	// requestIDLabel is placed on internal UpgradeReadinessCheck CRs so the HTTP
+	// requestIDLabel is placed on internal UpgradeDiagsCheck CRs so the HTTP
 	// service can find them by requestId without an in-memory map.
-	requestIDLabel = "readiness.managed.openshift.io/request-id"
+	requestIDLabel = "upgradediags.managed.openshift.io/request-id"
 
 	// tlsCertEnv / tlsKeyEnv allow overriding the cert paths (e.g. for local dev).
-	tlsCertEnv      = "READINESS_TLS_CERT"
-	tlsKeyEnv       = "READINESS_TLS_KEY"
-	defaultCertFile = "/etc/readiness-tls/tls.crt"
-	defaultKeyFile  = "/etc/readiness-tls/tls.key"
+	tlsCertEnv      = "UPGRADEDIAGS_TLS_CERT"
+	tlsKeyEnv       = "UPGRADEDIAGS_TLS_KEY"
+	defaultCertFile = "/etc/upgradediags-tls/tls.crt"
+	defaultKeyFile  = "/etc/upgradediags-tls/tls.key"
 )
 
-// CheckRequest is the body of POST /api/v1/readiness-checks.
+// CheckRequest is the body of POST /api/v1/upgrade-diags.
 type CheckRequest struct {
 	TargetVersion       string   `json:"targetVersion"`
 	TargetChannel       string   `json:"targetChannel"`
@@ -43,13 +43,13 @@ type CheckRequest struct {
 	OverallTimeoutSeconds      int32    `json:"overallTimeoutSeconds,omitempty"`
 	ChecksToRun                []string `json:"checksToRun,omitempty"`
 	Description         string   `json:"description,omitempty"`
-	// NamePrefix sets a custom prefix for the generated UpgradeReadinessCheck CR name.
+	// NamePrefix sets a custom prefix for the generated UpgradeDiagsCheck CR name.
 	// Must be a valid DNS label segment (lowercase alphanumeric and hyphens, no leading/trailing hyphens).
 	// Defaults to "upgradediags" if empty or invalid.
 	NamePrefix string `json:"namePrefix,omitempty"`
 }
 
-// CheckResponse is the body returned by GET /api/v1/readiness-checks/{id}.
+// CheckResponse is the body returned by GET /api/v1/upgrade-diags/{id}.
 type CheckResponse struct {
 	RequestID       string        `json:"requestId"`
 	Status          string        `json:"status"`
@@ -82,40 +82,40 @@ type CheckResult struct {
 
 // PreflightHTTPServer serves the readiness check HTTP API.
 // It uses the operator's own service-account client to create internal
-// UpgradeReadinessCheck CRs (which the sre-regular-user-validation webhook
+// UpgradeDiagsCheck CRs (which the sre-regular-user-validation webhook
 // permits for the operator SA), while enforcing the caller's RBAC via
 // TokenReview + SubjectAccessReview before acting on their behalf.
-type ReadinessHTTPServer struct {
+type UpgradeDiagsHTTPServer struct {
 	Client    client.Client
 	Namespace string
 	Logger    logr.Logger
 }
 
-// Start listens on readinessHTTPPort with TLS until ctx is cancelled.
+// Start listens on diagsHTTPPort with TLS until ctx is cancelled.
 // If TLS certificates are not present the server logs a warning and returns nil
 // (non-fatal: the operator continues without HTTP access to readiness checks).
-func (s *ReadinessHTTPServer) Start(ctx context.Context) error {
+func (s *UpgradeDiagsHTTPServer) Start(ctx context.Context) error {
 	certFile := envOr(tlsCertEnv, defaultCertFile)
 	keyFile := envOr(tlsKeyEnv, defaultKeyFile)
 
 	if _, err := os.Stat(certFile); err != nil {
-		s.Logger.Info("Readiness HTTP service: TLS cert not found, HTTP service disabled",
+		s.Logger.Info("Upgrade diags HTTP service: TLS cert not found, HTTP service disabled",
 			"cert", certFile, "hint", "annotate the Service with service.beta.openshift.io/serving-cert-secret-name")
 		return err
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return fmt.Errorf("readiness HTTP: loading TLS cert: %w", err)
+		return fmt.Errorf("upgrade diags HTTP: loading TLS cert: %w", err)
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/readiness-checks", s.route)
-	mux.HandleFunc("/api/v1/readiness-checks/", s.route)
+	mux.HandleFunc("/api/v1/upgrade-diags", s.route)
+	mux.HandleFunc("/api/v1/upgrade-diags/", s.route)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	srv := &http.Server{
-		Addr:              readinessHTTPPort,
+		Addr:              diagsHTTPPort,
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{
@@ -132,9 +132,9 @@ func (s *ReadinessHTTPServer) Start(ctx context.Context) error {
 		_ = srv.Shutdown(shutCtx)
 	}(ctx)
 
-	s.Logger.Info("Starting readiness HTTP service", "addr", readinessHTTPPort)
+	s.Logger.Info("Starting upgrade diags HTTP service", "addr", diagsHTTPPort)
 	if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("readiness HTTP server: %w", err)
+		return fmt.Errorf("upgrade diags HTTP server: %w", err)
 	}
 	return nil
 }
@@ -148,20 +148,20 @@ type CatalogEntry struct {
 }
 
 // route dispatches based on method and path.
-func (s *ReadinessHTTPServer) route(w http.ResponseWriter, r *http.Request) {
+func (s *UpgradeDiagsHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 	// Catch any panic in a handler so a nil-pointer or unexpected error in this
 	// controller cannot crash the net/http goroutine and take down the HTTP service.
 	// Go's net/http recovers handler panics too, but logs them to stderr; this gives
 	// us structured logging and a proper 500 response.
 	defer func() {
 		if p := recover(); p != nil {
-			s.Logger.Error(fmt.Errorf("%v", p), "panic in readiness HTTP handler; request aborted",
+			s.Logger.Error(fmt.Errorf("%v", p), "panic in upgrade diags HTTP handler; request aborted",
 				"method", r.Method, "path", r.URL.Path)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 	}()
 
-	// /api/v1/readiness-checks/{id} has 5 slash-separated parts after trim
+	// /api/v1/upgrade-diags/{id} has 5 slash-separated parts after trim
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	parts := strings.Split(path, "/")
 	requestID := ""
@@ -197,7 +197,7 @@ func (s *ReadinessHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 
 // handleCatalog returns the list of registered checks with their names, descriptions,
 // default owners, and timeouts. No authentication required — this is schema metadata.
-func (s *ReadinessHTTPServer) handleCatalog(w http.ResponseWriter) {
+func (s *UpgradeDiagsHTTPServer) handleCatalog(w http.ResponseWriter) {
 	entries := make([]CatalogEntry, 0, len(registeredChecks))
 	for _, c := range registeredChecks {
 		entry := CatalogEntry{
@@ -216,7 +216,7 @@ func (s *ReadinessHTTPServer) handleCatalog(w http.ResponseWriter) {
 	})
 }
 
-func (s *ReadinessHTTPServer) handleCreate(w http.ResponseWriter, r *http.Request, token string) {
+func (s *UpgradeDiagsHTTPServer) handleCreate(w http.ResponseWriter, r *http.Request, token string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "create"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -245,22 +245,22 @@ func (s *ReadinessHTTPServer) handleCreate(w http.ResponseWriter, r *http.Reques
 	requestID := uuid.New().String()
 	cr := s.buildInternalCR(requestID, req)
 	if err := s.Client.Create(ctx, cr); err != nil {
-		s.Logger.Error(err, "Failed to create UpgradeReadinessCheck", "requestId", requestID)
-		http.Error(w, "Internal error creating readiness check", http.StatusInternalServerError)
+		s.Logger.Error(err, "Failed to create UpgradeDiagsCheck", "requestId", requestID)
+		http.Error(w, "Internal error creating upgrade diags check", http.StatusInternalServerError)
 		return
 	}
 
-	s.Logger.Info("Readiness check created via HTTP", "requestId", requestID, "crName", cr.Name)
+	s.Logger.Info("Upgrade diags check created via HTTP", "requestId", requestID, "crName", cr.Name)
 
 	writeJSON(w, http.StatusAccepted, map[string]interface{}{
 		"requestId": requestID,
 		"status":    "accepted",
-		"statusUrl": fmt.Sprintf("/api/v1/readiness-checks/%s", requestID),
-		"message":   "Readiness check accepted",
+		"statusUrl": fmt.Sprintf("/api/v1/upgrade-diags/%s", requestID),
+		"message":   "Upgrade diags check accepted",
 	})
 }
 
-func (s *ReadinessHTTPServer) handleGet(w http.ResponseWriter, r *http.Request, token, requestID string) {
+func (s *UpgradeDiagsHTTPServer) handleGet(w http.ResponseWriter, r *http.Request, token, requestID string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "get"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -274,14 +274,14 @@ func (s *ReadinessHTTPServer) handleGet(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, buildResponse(requestID, cr))
 }
 
-func (s *ReadinessHTTPServer) handleList(w http.ResponseWriter, r *http.Request, token string) {
+func (s *UpgradeDiagsHTTPServer) handleList(w http.ResponseWriter, r *http.Request, token string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "list"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
 		return
 	}
 
-	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
+	list := &upgradev1alpha1.UpgradeDiagsCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.HasLabels{requestIDLabel},
@@ -302,7 +302,7 @@ func (s *ReadinessHTTPServer) handleList(w http.ResponseWriter, r *http.Request,
 	})
 }
 
-func (s *ReadinessHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request, token, requestID string) {
+func (s *UpgradeDiagsHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request, token, requestID string) {
 	ctx := r.Context()
 	if err := s.authorizeToken(ctx, token, "delete"); err != nil {
 		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
@@ -314,18 +314,18 @@ func (s *ReadinessHTTPServer) handleDelete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.Client.Delete(ctx, cr); err != nil {
-		s.Logger.Error(err, "Failed to delete UpgradeReadinessCheck", "requestId", requestID)
-		http.Error(w, "Internal error deleting readiness check", http.StatusInternalServerError)
+		s.Logger.Error(err, "Failed to delete UpgradeDiagsCheck", "requestId", requestID)
+		http.Error(w, "Internal error deleting upgrade diags check", http.StatusInternalServerError)
 		return
 	}
-	s.Logger.Info("Readiness check deleted via HTTP", "requestId", requestID, "crName", cr.Name)
+	s.Logger.Info("Upgrade diags check deleted via HTTP", "requestId", requestID, "crName", cr.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // cleanupExpiredChecks deletes readiness checks that have passed their TTL.
 // This runs opportunistically when new requests come in to avoid resource buildup.
-func (s *ReadinessHTTPServer) cleanupExpiredChecks(ctx context.Context) {
-	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
+func (s *UpgradeDiagsHTTPServer) cleanupExpiredChecks(ctx context.Context) {
+	list := &upgradev1alpha1.UpgradeDiagsCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.HasLabels{requestIDLabel},
@@ -337,7 +337,7 @@ func (s *ReadinessHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 	now := time.Now()
 	for i := range list.Items {
 		cr := &list.Items[i]
-		deleteAfter := cr.Annotations["readiness.managed.openshift.io/delete-after"]
+		deleteAfter := cr.Annotations["upgradediags.managed.openshift.io/delete-after"]
 		if deleteAfter == "" {
 			continue
 		}
@@ -350,7 +350,7 @@ func (s *ReadinessHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 			if err := s.Client.Delete(ctx, cr); err != nil {
 				s.Logger.Error(err, "Failed to delete expired check", "crName", cr.Name)
 			} else {
-				s.Logger.Info("Deleted expired readiness check", "crName", cr.Name, "expiry", deleteAfter)
+				s.Logger.Info("Deleted expired upgrade diags check", "crName", cr.Name, "expiry", deleteAfter)
 			}
 		}
 	}
@@ -358,9 +358,9 @@ func (s *ReadinessHTTPServer) cleanupExpiredChecks(ctx context.Context) {
 
 // checkActiveLimit enforces a maximum of 10 active readiness checks to prevent resource exhaustion.
 // Returns an error with instructions if the limit is reached.
-func (s *ReadinessHTTPServer) checkActiveLimit(ctx context.Context) error {
+func (s *UpgradeDiagsHTTPServer) checkActiveLimit(ctx context.Context) error {
 	const maxActiveChecks = 10
-	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
+	list := &upgradev1alpha1.UpgradeDiagsCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.HasLabels{requestIDLabel},
@@ -368,14 +368,14 @@ func (s *ReadinessHTTPServer) checkActiveLimit(ctx context.Context) error {
 		return fmt.Errorf("internal error checking active checks: %w", err)
 	}
 	if len(list.Items) >= maxActiveChecks {
-		return fmt.Errorf("too many active readiness checks (%d/%d). List existing checks with GET /api/v1/readiness-checks and delete completed ones with DELETE /api/v1/readiness-checks/{id} before creating new checks", len(list.Items), maxActiveChecks)
+		return fmt.Errorf("too many active upgrade diags checks (%d/%d). List existing checks with GET /api/v1/upgrade-diags and delete completed ones with DELETE /api/v1/upgrade-diags/{id} before creating new checks", len(list.Items), maxActiveChecks)
 	}
 	return nil
 }
 
 // authorizeToken performs TokenReview (authn) then SubjectAccessReview (authz).
 // verb should be "create", "get", "list", or "delete".
-func (s *ReadinessHTTPServer) authorizeToken(ctx context.Context, token, verb string) error {
+func (s *UpgradeDiagsHTTPServer) authorizeToken(ctx context.Context, token, verb string) error {
 	tr := &authnv1.TokenReview{Spec: authnv1.TokenReviewSpec{Token: token}}
 	if err := s.Client.Create(ctx, tr); err != nil {
 		return fmt.Errorf("token review: %w", err)
@@ -398,7 +398,7 @@ func (s *ReadinessHTTPServer) authorizeToken(ctx context.Context, token, verb st
 				Namespace: s.Namespace,
 				Verb:      verb,
 				Group:     "upgrade.managed.openshift.io",
-				Resource:  "upgradereadinesschecks",
+				Resource:  "upgradediagschecks",
 			},
 		},
 	}
@@ -415,8 +415,8 @@ func (s *ReadinessHTTPServer) authorizeToken(ctx context.Context, token, verb st
 	return nil
 }
 
-func (s *ReadinessHTTPServer) findCR(ctx context.Context, requestID string) (*upgradev1alpha1.UpgradeReadinessCheck, error) {
-	list := &upgradev1alpha1.UpgradeReadinessCheckList{}
+func (s *UpgradeDiagsHTTPServer) findCR(ctx context.Context, requestID string) (*upgradev1alpha1.UpgradeDiagsCheck, error) {
+	list := &upgradev1alpha1.UpgradeDiagsCheckList{}
 	if err := s.Client.List(ctx, list,
 		client.InNamespace(s.Namespace),
 		client.MatchingLabels{requestIDLabel: requestID},
@@ -455,30 +455,30 @@ func crNamePrefix(raw, version, platform string) string {
 	plat := sanitize(platform)
 	switch {
 	case ver != "" && plat != "":
-		return fmt.Sprintf("urc-%s-%s-", ver, plat)
+		return fmt.Sprintf("udc-%s-%s-", ver, plat)
 	case ver != "":
-		return fmt.Sprintf("urc-%s-", ver)
+		return fmt.Sprintf("udc-%s-", ver)
 	default:
-		return "urc-"
+		return "udc-"
 	}
 }
 
-func (s *ReadinessHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradeReadinessCheck {
+func (s *UpgradeDiagsHTTPServer) buildInternalCR(requestID string, req CheckRequest) *upgradev1alpha1.UpgradeDiagsCheck {
 	annotations := map[string]string{
 		// Auto-delete after 24 hours to prevent resource buildup
-		"readiness.managed.openshift.io/delete-after": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+		"upgradediags.managed.openshift.io/delete-after": time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 	}
 	if req.Description != "" {
-		annotations["readiness.managed.openshift.io/description"] = req.Description
+		annotations["upgradediags.managed.openshift.io/description"] = req.Description
 	}
-	return &upgradev1alpha1.UpgradeReadinessCheck{
+	return &upgradev1alpha1.UpgradeDiagsCheck{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: crNamePrefix(req.NamePrefix, req.TargetVersion, req.Platform),
 			Namespace:    s.Namespace,
 			Labels:       map[string]string{requestIDLabel: requestID},
 			Annotations:  annotations,
 		},
-		Spec: upgradev1alpha1.UpgradeReadinessCheckSpec{
+		Spec: upgradev1alpha1.UpgradeDiagsCheckSpec{
 			UpgradeConfigSpec: upgradev1alpha1.UpgradeConfigSpec{
 				Type:                 upgradev1alpha1.UpgradeType(req.Platform),
 				Desired:              upgradev1alpha1.Update{Version: req.TargetVersion, Channel: req.TargetChannel},
@@ -492,7 +492,7 @@ func (s *ReadinessHTTPServer) buildInternalCR(requestID string, req CheckRequest
 	}
 }
 
-func buildResponse(requestID string, cr *upgradev1alpha1.UpgradeReadinessCheck) CheckResponse {
+func buildResponse(requestID string, cr *upgradev1alpha1.UpgradeDiagsCheck) CheckResponse {
 	status := "pending"
 	if cr.Status.StartedAt != nil {
 		status = "running"

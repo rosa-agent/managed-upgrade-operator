@@ -6,7 +6,7 @@
     "name": "managed-upgrade-operator",
     "version": "0.0.1",
     "displayName": "Upgrade Preflight Checks",
-    "description": "Run and view upgrade readiness checks for OpenShift clusters",
+    "description": "Run and view upgrade diagnostics checks for OpenShift clusters",
     "dependencies": {
       "@console/pluginAPI": "~4.22.0"
     }

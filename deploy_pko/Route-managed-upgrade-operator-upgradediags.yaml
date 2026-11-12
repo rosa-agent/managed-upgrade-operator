@@ -1,7 +1,7 @@
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: muo-readiness
+  name: muo-upgradediags
   namespace: openshift-managed-upgrade-operator
   annotations:
     package-operator.run/phase: deploy
@@ -14,6 +14,6 @@ spec:
     insecureEdgeTerminationPolicy: Redirect
   to:
     kind: Service
-    name: managed-upgrade-operator-readiness
+    name: managed-upgrade-operator-upgradediags
     weight: 100
   wildcardPolicy: None

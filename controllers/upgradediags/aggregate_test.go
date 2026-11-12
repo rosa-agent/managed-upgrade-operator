@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
@@ -11,10 +11,10 @@ import (
 var _ = Describe("applyAggregates", func() {
 	now := metav1.Now()
 
-	makeChecks := func(results ...upgradev1alpha1.CheckResult) []upgradev1alpha1.ReadinessCheckResult {
-		checks := make([]upgradev1alpha1.ReadinessCheckResult, len(results))
+	makeChecks := func(results ...upgradev1alpha1.CheckResult) []upgradev1alpha1.DiagsCheckResult {
+		checks := make([]upgradev1alpha1.DiagsCheckResult, len(results))
 		for i, r := range results {
-			checks[i] = upgradev1alpha1.ReadinessCheckResult{
+			checks[i] = upgradev1alpha1.DiagsCheckResult{
 				Name:   "check",
 				Result: r,
 				Execution: upgradev1alpha1.CheckExecution{
@@ -26,7 +26,7 @@ var _ = Describe("applyAggregates", func() {
 	}
 
 	It("sets Passed when all checks pass", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(
 			upgradev1alpha1.CheckPassed,
 			upgradev1alpha1.CheckPassed,
@@ -38,7 +38,7 @@ var _ = Describe("applyAggregates", func() {
 	})
 
 	It("sets Warning when only warnings present", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(
 			upgradev1alpha1.CheckPassed,
 			upgradev1alpha1.CheckResultWarning,
@@ -51,7 +51,7 @@ var _ = Describe("applyAggregates", func() {
 	})
 
 	It("sets Failed when any check fails", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(
 			upgradev1alpha1.CheckPassed,
 			upgradev1alpha1.CheckResultWarning,
@@ -62,7 +62,7 @@ var _ = Describe("applyAggregates", func() {
 	})
 
 	It("sets Failed when any check errors (infrastructure failure)", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(
 			upgradev1alpha1.CheckPassed,
 			upgradev1alpha1.CheckResultError,
@@ -72,7 +72,7 @@ var _ = Describe("applyAggregates", func() {
 	})
 
 	It("Failed takes precedence over Warning", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(
 			upgradev1alpha1.CheckResultWarning,
 			upgradev1alpha1.CheckFailed,
@@ -81,29 +81,29 @@ var _ = Describe("applyAggregates", func() {
 	})
 
 	It("sets Complete condition with correct reason and status=True", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(upgradev1alpha1.CheckPassed), now)
 		Expect(status.Conditions).To(HaveLen(1))
 		cond := status.Conditions[0]
-		Expect(cond.Type).To(Equal(upgradev1alpha1.ReadinessCompleteCondition))
+		Expect(cond.Type).To(Equal(upgradev1alpha1.DiagsCompleteCondition))
 		Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		Expect(cond.Reason).To(Equal("Passed"))
 	})
 
 	It("sets Complete condition Reason=Warning when only warnings", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(upgradev1alpha1.CheckResultWarning), now)
 		Expect(status.Conditions[0].Reason).To(Equal("Warning"))
 	})
 
 	It("sets Complete condition Reason=Failed when checks fail", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(upgradev1alpha1.CheckFailed), now)
 		Expect(status.Conditions[0].Reason).To(Equal("Failed"))
 	})
 
 	It("includes counts in condition message", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, makeChecks(
 			upgradev1alpha1.CheckPassed,
 			upgradev1alpha1.CheckResultWarning,
@@ -115,7 +115,7 @@ var _ = Describe("applyAggregates", func() {
 	})
 
 	It("handles empty check list as Passed", func() {
-		status := &upgradev1alpha1.UpgradeReadinessCheckStatus{}
+		status := &upgradev1alpha1.UpgradeDiagsCheckStatus{}
 		applyAggregates(status, nil, now)
 		Expect(status.OverallResult).To(Equal(upgradev1alpha1.CheckPassed))
 		Expect(status.ChecksPassed).To(Equal(0))

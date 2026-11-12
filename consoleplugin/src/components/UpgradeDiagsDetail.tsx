@@ -1,11 +1,11 @@
 import * as React from 'react';
 import { List, ListItem } from '@patternfly/react-core';
-import { type UpgradeReadinessCheck, type ReadinessCheckResult, type CheckResult } from '../types';
+import { type UpgradeDiagsCheck, type DiagsCheckResult, type CheckResult } from '../types';
 import { StatusBadge } from './StatusBadge';
 
-interface Props { pfc: UpgradeReadinessCheck; }
+interface Props { pfc: UpgradeDiagsCheck; }
 
-const DESCRIPTION_ANNOTATION = 'readiness.managed.openshift.io/description';
+const UPGRADEDIAGS_DESCRIPTION_ANNOTATION = 'upgradediags.managed.openshift.io/description';
 
 const SEVERITY: Record<CheckResult, number> = {
   Error: 0, Failed: 1, Warning: 2, Unknown: 3, Passed: 4, Skipped: 5, TimedOut: 6,
@@ -39,9 +39,9 @@ const checkBorderColor = (result: CheckResult): string => {
 // "Danger alert:" in the console plugin iframe when PF CSS is not fully loaded.
 const SummaryBanner: React.FC<{
   issueCount: number;
-  customerItems: ReadinessCheckResult[];
-  redHatItems: ReadinessCheckResult[];
-  otherItems: ReadinessCheckResult[];
+  customerItems: DiagsCheckResult[];
+  redHatItems: DiagsCheckResult[];
+  otherItems: DiagsCheckResult[];
   hasErrors: boolean;
 }> = ({ issueCount, customerItems, redHatItems, otherItems, hasErrors }) => {
   const borderColor = hasErrors ? '#c9190b' : '#c58c00';
@@ -82,7 +82,7 @@ const SummaryBanner: React.FC<{
 };
 
 // Expanded check row content
-const CheckRowDetail: React.FC<{ c: ReadinessCheckResult }> = ({ c }) => {
+const CheckRowDetail: React.FC<{ c: DiagsCheckResult }> = ({ c }) => {
   const ownerLabel = c.owner === 'customer'
     ? 'Customer action required'
     : c.owner === 'service-team'
@@ -163,11 +163,11 @@ const CheckRowDetail: React.FC<{ c: ReadinessCheckResult }> = ({ c }) => {
   );
 };
 
-export const UpgradeReadinessDetail: React.FC<Props> = ({ pfc }) => {
+export const UpgradeDiagsDetail: React.FC<Props> = ({ pfc }) => {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const toggle = (name: string) => setExpanded(prev => ({ ...prev, [name]: !prev[name] }));
 
-  const description = pfc.metadata?.annotations?.[DESCRIPTION_ANNOTATION];
+  const description = pfc.metadata?.annotations?.[UPGRADEDIAGS_DESCRIPTION_ANNOTATION];
   const s           = pfc.status;
   const sorted      = [...(s?.checks ?? [])].sort(
     (a, b) => (SEVERITY[a.result] ?? 3) - (SEVERITY[b.result] ?? 3)

@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	"context"
@@ -19,7 +19,7 @@ var prometheusRetryBase = 2 * time.Second
 
 // resolveCheckTimeout returns the timeout to apply to a single check.
 // Priority: check.DefaultTimeout() > spec.DefaultCheckTimeoutSeconds > 30s constant.
-func resolveCheckTimeout(check ReadinessCheck, spec upgradev1alpha1.UpgradeReadinessCheckSpec) time.Duration {
+func resolveCheckTimeout(check DiagnosticsCheck, spec upgradev1alpha1.UpgradeDiagsCheckSpec) time.Duration {
 	if d := check.DefaultTimeout(); d > 0 {
 		return d
 	}
@@ -32,7 +32,7 @@ func resolveCheckTimeout(check ReadinessCheck, spec upgradev1alpha1.UpgradeReadi
 // runCheck executes a ReadinessCheck with timeout, panic recovery, timing, and
 // framework-level field injection (Description, Owner, Action). Check authors
 // only need to return a CheckOutput.
-func runCheck(check ReadinessCheck, ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) (result upgradev1alpha1.ReadinessCheckResult) {
+func runCheck(check DiagnosticsCheck, ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) (result upgradev1alpha1.DiagsCheckResult) {
 	start := metav1.Now()
 	checkCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -56,7 +56,7 @@ func runCheck(check ReadinessCheck, ctx context.Context, deps CheckDependencies,
 		owner = check.DefaultOwner()
 	}
 
-	var r upgradev1alpha1.ReadinessCheckResult
+	var r upgradev1alpha1.DiagsCheckResult
 	if output.Result == upgradev1alpha1.CheckResultError {
 		errMsg := output.Error
 		if errMsg == "" {
@@ -74,8 +74,8 @@ func runCheck(check ReadinessCheck, ctx context.Context, deps CheckDependencies,
 	return withTiming(r, start, metav1.Now())
 }
 
-func timedOutResult(check ReadinessCheck, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
-	return withDesc(upgradev1alpha1.ReadinessCheckResult{
+func timedOutResult(check DiagnosticsCheck, timeout time.Duration) upgradev1alpha1.DiagsCheckResult {
+	return withDesc(upgradev1alpha1.DiagsCheckResult{
 		Name:           check.Name(),
 		Result:         upgradev1alpha1.CheckResultTimedOut,
 		Owner:          upgradev1alpha1.OwnerServiceTeam,
@@ -85,8 +85,8 @@ func timedOutResult(check ReadinessCheck, timeout time.Duration) upgradev1alpha1
 	}, check.Description())
 }
 
-func skippedResult(check ReadinessCheck, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
-	return withDesc(upgradev1alpha1.ReadinessCheckResult{
+func skippedResult(check DiagnosticsCheck, timeout time.Duration) upgradev1alpha1.DiagsCheckResult {
+	return withDesc(upgradev1alpha1.DiagsCheckResult{
 		Name:           check.Name(),
 		Result:         upgradev1alpha1.CheckResultSkipped,
 		Owner:          check.DefaultOwner(),
@@ -95,8 +95,8 @@ func skippedResult(check ReadinessCheck, timeout time.Duration) upgradev1alpha1.
 	}, check.Description())
 }
 
-func completedResult(name string, result upgradev1alpha1.CheckResult, summary string, findings []string, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
-	return upgradev1alpha1.ReadinessCheckResult{
+func completedResult(name string, result upgradev1alpha1.CheckResult, summary string, findings []string, timeout time.Duration) upgradev1alpha1.DiagsCheckResult {
+	return upgradev1alpha1.DiagsCheckResult{
 		Name:           name,
 		Result:         result,
 		TimeoutSeconds: int32(timeout.Seconds()),
@@ -108,8 +108,8 @@ func completedResult(name string, result upgradev1alpha1.CheckResult, summary st
 	}
 }
 
-func errorResult(name, errMsg string, timeout time.Duration) upgradev1alpha1.ReadinessCheckResult {
-	return upgradev1alpha1.ReadinessCheckResult{
+func errorResult(name, errMsg string, timeout time.Duration) upgradev1alpha1.DiagsCheckResult {
+	return upgradev1alpha1.DiagsCheckResult{
 		Name:           name,
 		Result:         upgradev1alpha1.CheckResultError,
 		TimeoutSeconds: int32(timeout.Seconds()),
@@ -120,23 +120,23 @@ func errorResult(name, errMsg string, timeout time.Duration) upgradev1alpha1.Rea
 	}
 }
 
-func withDesc(r upgradev1alpha1.ReadinessCheckResult, desc string) upgradev1alpha1.ReadinessCheckResult {
+func withDesc(r upgradev1alpha1.DiagsCheckResult, desc string) upgradev1alpha1.DiagsCheckResult {
 	r.Description = desc
 	return r
 }
 
-func withTiming(r upgradev1alpha1.ReadinessCheckResult, start, end metav1.Time) upgradev1alpha1.ReadinessCheckResult {
+func withTiming(r upgradev1alpha1.DiagsCheckResult, start, end metav1.Time) upgradev1alpha1.DiagsCheckResult {
 	r.Execution.StartedAt = &start
 	r.Execution.CompletedAt = &end
 	return r
 }
 
-func withOwner(r upgradev1alpha1.ReadinessCheckResult, owner upgradev1alpha1.CheckOwner) upgradev1alpha1.ReadinessCheckResult {
+func withOwner(r upgradev1alpha1.DiagsCheckResult, owner upgradev1alpha1.CheckOwner) upgradev1alpha1.DiagsCheckResult {
 	r.Owner = owner
 	return r
 }
 
-func withAction(r upgradev1alpha1.ReadinessCheckResult, action string) upgradev1alpha1.ReadinessCheckResult {
+func withAction(r upgradev1alpha1.DiagsCheckResult, action string) upgradev1alpha1.DiagsCheckResult {
 	r.Action = action
 	return r
 }

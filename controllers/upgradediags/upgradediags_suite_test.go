@@ -1,4 +1,4 @@
-package readiness
+package upgradediags
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestPreflight(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Readiness Suite")
+	RunSpecs(t, "Upgrade Diags Suite")
 }
