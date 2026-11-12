@@ -1,21 +1,21 @@
 import * as React from 'react';
 import { Label } from '@patternfly/react-core';
-import { CheckCircleIcon, ExclamationTriangleIcon, TimesCircleIcon, QuestionCircleIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, ExclamationTriangleIcon, TimesCircleIcon, QuestionCircleIcon, BanIcon } from '@patternfly/react-icons';
 import { type CheckResult } from '../types';
 
 interface Props { result: CheckResult; }
 
-const config: Record<CheckResult, { color: 'green' | 'orange' | 'red' | 'grey'; icon: React.ReactNode }> = {
-  Passed:   { color: 'green',  icon: <CheckCircleIcon /> },
-  Warning:  { color: 'orange', icon: <ExclamationTriangleIcon /> },
-  Failed:   { color: 'red',    icon: <TimesCircleIcon /> },
-  Error:    { color: 'red',    icon: <TimesCircleIcon /> },
-  Skipped:  { color: 'grey',   icon: <QuestionCircleIcon /> },
-  TimedOut: { color: 'grey',   icon: <QuestionCircleIcon /> },
-  Unknown:  { color: 'grey',   icon: <QuestionCircleIcon /> },
+const CONFIG: Record<CheckResult, { color: 'green' | 'orange' | 'red' | 'grey'; icon: React.ReactNode; label: string }> = {
+  Passed:   { color: 'green',  icon: <CheckCircleIcon />,        label: 'Passed'    },
+  Warning:  { color: 'orange', icon: <ExclamationTriangleIcon />, label: 'Warning'   },
+  Failed:   { color: 'red',    icon: <TimesCircleIcon />,         label: 'Failed'    },
+  Error:    { color: 'red',    icon: <TimesCircleIcon />,         label: 'Error'     },
+  Skipped:  { color: 'grey',   icon: <BanIcon />,                 label: 'Skipped'   },
+  TimedOut: { color: 'grey',   icon: <QuestionCircleIcon />,      label: 'Timed Out' },
+  Unknown:  { color: 'grey',   icon: <QuestionCircleIcon />,      label: 'Unknown'   },
 };
 
 export const StatusBadge: React.FC<Props> = ({ result }) => {
-  const { color, icon } = config[result] ?? config.Unknown;
-  return <Label color={color} icon={icon}>{result}</Label>;
+  const { color, icon, label } = CONFIG[result] ?? CONFIG.Unknown;
+  return <Label color={color} icon={icon}>{label}</Label>;
 };

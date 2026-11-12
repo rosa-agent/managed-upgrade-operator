@@ -24,16 +24,24 @@ interface ClusterVersion extends K8sResourceCommon {
   };
 }
 
+export interface InitialValues {
+  version: string;
+  channel: string;
+  platform: 'OSD' | 'ARO';
+  description: string;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  initialValues?: InitialValues;
 }
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 const CHANNEL_RE = /^(stable|fast|candidate|eus)-\d+\.\d+$/;
 
-export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreated }) => {
+export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreated, initialValues }) => {
   const [version, setVersion] = React.useState('');
   const [channel, setChannel] = React.useState('');
   const [platform, setPlatform] = React.useState<'OSD' | 'ARO'>('OSD');
@@ -58,11 +66,20 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
   const channelMatch = currentChannel.match(/^(stable|fast|candidate|eus)-(\d+\.\d+)$/);
   const channelXY = channelMatch?.[2] ?? '';
 
+  // Seed form when opened: use initialValues (re-run) or cluster defaults
   React.useEffect(() => {
-    if (isOpen && currentChannel && !channel) {
+    if (!isOpen) return;
+    if (initialValues) {
+      setVersion(initialValues.version);
+      setChannel(initialValues.channel);
+      setPlatform(initialValues.platform);
+      setDescription(initialValues.description);
+      setUseCustomVersion(true);
+      setUseCustomChannel(true);
+    } else if (currentChannel && !channel) {
       setChannel(currentChannel);
     }
-  }, [isOpen, currentChannel]);
+  }, [isOpen, initialValues]);
 
   const versionError = version && !SEMVER_RE.test(version) ? 'Version must be in X.Y.Z format (e.g. 4.22.22)' : '';
   const channelError = channel && !CHANNEL_RE.test(channel) ? 'Channel must be in {type}-X.Y format (e.g. stable-4.22)' : '';
@@ -108,7 +125,7 @@ export const CreatePreflightForm: React.FC<Props> = ({ isOpen, onClose, onCreate
   return (
     <Modal
       variant={ModalVariant.small}
-      title="Run Upgrade Preflight Checks"
+      title={initialValues ? 'Re-run Upgrade Preflight Checks' : 'Run Upgrade Preflight Checks'}
       isOpen={isOpen}
       onClose={handleClose}
       appendTo={() => document.body}
