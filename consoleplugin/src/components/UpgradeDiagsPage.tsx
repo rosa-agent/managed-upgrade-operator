@@ -28,6 +28,10 @@ const T = {
   bgHover:     'var(--pf-t--global--background--color--secondary--hover)',
   bgActive:    'var(--pf-t--global--background--color--secondary--click)',
   shadow:      'var(--pf-t--global--shadow--md)',
+  radiusPill: 'var(--pf-t--global--border--radius--pill)',
+  radiusLg:   'var(--pf-t--global--border--radius--lg)',
+  radiusMd:   'var(--pf-t--global--border--radius--md)',
+  radiusSm:   'var(--pf-t--global--border--radius--sm)',
 } as const;
 
 const relativeTime = (ts?: string): string => {
@@ -71,7 +75,7 @@ const CheckSummary: React.FC<{ pfc: UpgradeDiagsCheck }> = ({ pfc }) => {
       {pills.filter(([n]) => (n ?? 0) > 0).map(([n, label, color]) => (
         <span key={label} style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
-          padding: '1px 8px', borderRadius: 20,
+          padding: '1px 8px', borderRadius: T.radiusPill,
           background: T.bgSecondary, color, border: `1px solid ${T.border}`,
           fontWeight: 600, fontSize: 12,
         }}>
@@ -147,7 +151,7 @@ export const UpgradeDiagsPage: React.FC = () => {
 
   const cardStyle: React.CSSProperties = {
     border: `1px solid ${T.border}`,
-    borderRadius: 8,
+    borderRadius: T.radiusLg,
     overflow: 'hidden',
     boxShadow: T.shadow,
   };

@@ -20,6 +20,10 @@ const T = {
   dangerBg:   'var(--pf-t--global--background--color--status--danger--default)',
   warningBg:  'var(--pf-t--global--background--color--status--warning--default)',
   infoBg:     'var(--pf-t--global--background--color--status--info--default)',
+  radiusPill: 'var(--pf-t--global--border--radius--pill)',
+  radiusLg:   'var(--pf-t--global--border--radius--lg)',
+  radiusMd:   'var(--pf-t--global--border--radius--md)',
+  radiusSm:   'var(--pf-t--global--border--radius--sm)',
 } as const;
 
 // ---- Types (mirror upgrade_status.go response) ----------------------------
@@ -151,7 +155,7 @@ const PhaseBadge: React.FC<{ phase: string; size?: 'sm' | 'md' }> = ({ phase, si
     <span style={{
       display: 'inline-block',
       padding: size === 'md' ? '3px 12px' : '1px 8px',
-      borderRadius: 20,
+      borderRadius: T.radiusPill,
       background: `${color}22`,
       color,
       border: `1px solid ${color}55`,
@@ -257,7 +261,7 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
     display: 'flex', flexDirection: 'column', alignItems: 'center',
     padding: '6px 14px',
     background: 'var(--pf-t--global--color--text--subtle)',
-    borderRadius: 6,
+    borderRadius: T.radiusMd,
     border: `1px solid ${highlight ? color + '55' : 'var(--pf-t--global--color--text--subtle)'}`,
   });
 
@@ -270,7 +274,7 @@ const MachinePoolCard: React.FC<{ pool: MachinePoolStatus }> = ({ pool }) => {
   };
 
   return (
-    <div style={{ border: `1px solid ${T.border}`, borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radiusMd, overflow: 'hidden', marginBottom: 12 }}>
       {/* Pool header */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 12,
@@ -437,7 +441,7 @@ const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
   const countPill = (n: number, label: string, c: string) => n > 0 ? (
     <span key={label} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      padding: '1px 8px', borderRadius: 20,
+      padding: '1px 8px', borderRadius: T.radiusPill,
       background: `${c}22`, color: c, border: `1px solid ${c}55`,
       fontWeight: 600, fontSize: 11,
     }}>
@@ -446,7 +450,7 @@ const OperatorsCard: React.FC<{ ops: OperatorsStatus }> = ({ ops }) => {
   ) : null;
 
   return (
-    <div style={{ border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden', marginBottom: 20, boxShadow: T.shadow }}>
+    <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radiusLg, overflow: 'hidden', marginBottom: 20, boxShadow: T.shadow }}>
       {/* Clickable header row */}
       <div
         onClick={() => setExpanded(e => !e)}
@@ -518,7 +522,7 @@ export const UpgradeStatusView: React.FC = () => {
 
   const cardStyle: React.CSSProperties = {
     border: `1px solid ${T.border}`,
-    borderRadius: 8,
+    borderRadius: T.radiusLg,
     overflow: 'hidden',
     boxShadow: T.shadow,
     marginBottom: 20,

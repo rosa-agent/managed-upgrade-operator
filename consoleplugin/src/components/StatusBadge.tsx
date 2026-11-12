@@ -21,6 +21,10 @@ const C = {
   infoBg:    'var(--pf-t--global--background--color--status--info--default)',
   subtleBg:  'var(--pf-t--global--background--color--secondary--default)',
   border:    'var(--pf-t--global--border--color--default)',
+  radiusPill: 'var(--pf-t--global--border--radius--pill)',
+  radiusLg:   'var(--pf-t--global--border--radius--lg)',
+  radiusMd:   'var(--pf-t--global--border--radius--md)',
+  radiusSm:   'var(--pf-t--global--border--radius--sm)',
 } as const;
 
 interface Config {
@@ -51,7 +55,7 @@ export const StatusBadge: React.FC<Props> = ({ result }) => {
       alignItems: 'center',
       gap: 5,
       padding: '3px 10px',
-      borderRadius: 20,
+      borderRadius: C.radiusPill,
       background: bg,
       color: fg,
       border: `1px solid ${border}`,

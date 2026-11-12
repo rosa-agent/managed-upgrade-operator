@@ -17,6 +17,10 @@ const T = {
   dangerBg:    'var(--pf-t--global--background--color--status--danger--default)',
   warningBg:   'var(--pf-t--global--background--color--status--warning--default)',
   infoBg:      'var(--pf-t--global--background--color--status--info--default)',
+  radiusPill: 'var(--pf-t--global--border--radius--pill)',
+  radiusLg:   'var(--pf-t--global--border--radius--lg)',
+  radiusMd:   'var(--pf-t--global--border--radius--md)',
+  radiusSm:   'var(--pf-t--global--border--radius--sm)',
 } as const;
 
 const UPGRADEDIAGS_DESCRIPTION_ANNOTATION = 'upgradediags.managed.openshift.io/description';
@@ -67,7 +71,7 @@ const SummaryBanner: React.FC<{
       marginBottom: 16,
       borderLeft: `4px solid ${borderColor}`,
       background: bg,
-      borderRadius: 4,
+      borderRadius: T.radiusSm,
     }}>
       <div style={{ fontWeight: 700, color: borderColor, marginBottom: 8 }}>
         {icon} {issueCount} issue{issueCount !== 1 ? 's' : ''} found — upgrade may be blocked
@@ -116,7 +120,7 @@ const CheckRowDetail: React.FC<{ c: DiagsCheckResult }> = ({ c }) => {
         <div style={{ marginBottom: 10 }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
-            padding: '3px 10px', borderRadius: 20, fontWeight: 600, fontSize: 12,
+            padding: '3px 10px', borderRadius: T.radiusPill, fontWeight: 600, fontSize: 12,
             background: c.owner === 'customer' ? T.warningBg : T.infoBg,
             color: c.owner === 'customer' ? T.warning : T.info,
             border: `1px solid ${T.border}`,
@@ -137,7 +141,7 @@ const CheckRowDetail: React.FC<{ c: DiagsCheckResult }> = ({ c }) => {
           marginBottom: 10, padding: '8px 12px',
           background: T.dangerBg,
           borderLeft: `3px solid ${T.danger}`,
-          borderRadius: 4, fontSize: 13, fontFamily: 'monospace',
+          borderRadius: T.radiusSm, fontSize: 13, fontFamily: 'monospace',
           wordBreak: 'break-word',
         }}>
           {c.execution.error}
@@ -160,7 +164,7 @@ const CheckRowDetail: React.FC<{ c: DiagsCheckResult }> = ({ c }) => {
           marginTop: 8, padding: '8px 12px',
           background: c.owner === 'customer' ? T.warningBg : T.infoBg,
           borderLeft: `3px solid ${c.owner === 'customer' ? T.warning : T.info}`,
-          borderRadius: 4, fontSize: 13,
+          borderRadius: T.radiusSm, fontSize: 13,
         }}>
           <strong>Action required:</strong> {c.action}
         </div>
@@ -257,7 +261,7 @@ export const UpgradeDiagsDetail: React.FC<Props> = ({ pfc }) => {
         padding: '14px 16px',
         background: T.bgSecondary,
         border: `1px solid ${T.border}`,
-        borderRadius: 6,
+        borderRadius: T.radiusMd,
       }}>
         {metaItems.map(({ label, value }) => (
           <div key={label}>
@@ -269,7 +273,7 @@ export const UpgradeDiagsDetail: React.FC<Props> = ({ pfc }) => {
 
       {/* Individual checks table */}
       {sorted.length > 0 ? (
-        <div style={{ border: `1px solid ${T.border}`, borderRadius: 6, overflow: 'hidden' }}>
+        <div style={{ border: `1px solid ${T.border}`, borderRadius: T.radiusMd, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: T.bgSecondary }}>

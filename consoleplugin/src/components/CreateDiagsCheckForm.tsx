@@ -10,6 +10,20 @@ import { consoleFetch, useK8sWatchResource, type K8sResourceCommon } from '@open
 // bypassing the sre-regular-user-validation admission webhook.
 const UPGRADEDIAGS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-diags';
 
+const T = {
+  danger:      'var(--pf-t--global--color--status--danger--default)',
+  warning:     'var(--pf-t--global--color--status--warning--default)',
+  textSubtle:  'var(--pf-t--global--color--text--subtle)',
+  textMuted:   'var(--pf-t--global--color--text--placeholder)',
+  border:      'var(--pf-t--global--border--color--default)',
+  bgSecondary: 'var(--pf-t--global--background--color--secondary--default)',
+  dangerBg:    'var(--pf-t--global--background--color--status--danger--default)',
+  warningBg:   'var(--pf-t--global--background--color--status--warning--default)',
+  shadow:      'var(--pf-t--global--shadow--md)',
+  radiusLg:    'var(--pf-t--global--border--radius--lg)',
+  radiusSm:    'var(--pf-t--global--border--radius--sm)',
+} as const;
+
 interface ClusterVersion extends K8sResourceCommon {
   spec?: { channel?: string };
   status?: {
@@ -123,10 +137,10 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
     <div style={{
       marginTop: 16,
       padding: '20px 24px',
-      border: '1px solid rgba(255,255,255,0.12)',
-      borderRadius: 8,
-      background: 'rgba(255,255,255,0.03)',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+      border: `1px solid ${T.border}`,
+      borderRadius: T.radiusLg,
+      background: T.bgSecondary,
+      boxShadow: T.shadow,
     }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
@@ -135,12 +149,12 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
             {initialValues ? 'Re-run Upgrade Diagnostics' : 'Run Upgrade Diagnostics'}
           </div>
           {currentVersion && (
-            <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-              Current cluster version: <strong style={{ color: 'rgba(255,255,255,0.8)' }}>{currentVersion}</strong>
+            <div style={{ marginTop: 4, fontSize: 13, color: T.textSubtle }}>
+              Current cluster version: <strong style={{ color: T.textSubtle }}>{currentVersion}</strong>
             </div>
           )}
         </div>
-        <Button variant="plain" aria-label="Close form" onClick={handleClose} style={{ color: 'rgba(255,255,255,0.5)' }}>
+        <Button variant="plain" aria-label="Close form" onClick={handleClose} style={{ color: T.textSubtle }}>
           <TimesIcon />
         </Button>
       </div>
@@ -149,9 +163,9 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
       {error && (
         <div style={{
           padding: '10px 14px', marginBottom: 16,
-          background: 'rgba(201,25,11,0.12)',
-          borderLeft: '3px solid #c9190b',
-          borderRadius: 4, color: '#c9190b', fontSize: 13,
+          background: T.dangerBg,
+          borderLeft: `3px solid ${T.danger}`,
+          borderRadius: T.radiusSm, color: T.danger, fontSize: 13,
         }}>
           {error}
         </div>
@@ -213,7 +227,7 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
           {cvLoaded && (cvError || useCustomVersion) && (
             <>
               {cvError && (
-                <div style={{ padding: '8px 12px', marginBottom: 8, background: 'rgba(240,171,0,0.1)', borderLeft: '3px solid #c58c00', borderRadius: 4, fontSize: 13, color: '#c58c00' }}>
+                <div style={{ padding: '8px 12px', marginBottom: 8, background: T.warningBg, borderLeft: '3px solid #c58c00', borderRadius: T.radiusSm, fontSize: 13, color: T.warning }}>
                   Unable to load available versions — enter manually
                 </div>
               )}
