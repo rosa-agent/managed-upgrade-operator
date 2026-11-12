@@ -27,6 +27,7 @@ type UpgradeStatusSnapshot struct {
 	//         worker-upgrade, complete, stalled, failed, unknown.
 	Phase          string `json:"phase"`
 	TargetVersion  string `json:"targetVersion,omitempty"`
+	TargetChannel  string `json:"targetChannel,omitempty"`
 	CurrentVersion string `json:"currentVersion,omitempty"`
 	// CVOMessage is the human-readable message from the CVO Progressing condition.
 	CVOMessage     string              `json:"cvoMessage,omitempty"`
@@ -296,6 +297,7 @@ func (s *UpgradeDiagsHTTPServer) buildStatusSnapshot(ctx context.Context) (*Upgr
 	snap := &UpgradeStatusSnapshot{}
 	snap.CurrentVersion = currentVersion(cv)
 	snap.TargetVersion = targetVersion(cv)
+	snap.TargetChannel = cv.Spec.Channel
 
 	// Upgrade start time: find the history entry for the target version.
 	if snap.TargetVersion != "" {

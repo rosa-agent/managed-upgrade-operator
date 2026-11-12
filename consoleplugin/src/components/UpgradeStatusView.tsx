@@ -14,7 +14,7 @@ const T = {
   warning:    'var(--pf-t--global--color--status--warning--default)',
   success:    'var(--pf-t--global--color--status--success--default)',
   info:       'var(--pf-t--global--color--status--info--default)',
-  textSubtle: T.textSubtle,
+  textSubtle: 'var(--pf-t--global--color--text--subtle)',
   textMuted:  'var(--pf-t--global--color--text--placeholder)',
   border:     'var(--pf-t--global--border--color--default)',
   bgSecondary:'var(--pf-t--global--background--color--secondary--default)',
@@ -142,6 +142,7 @@ interface MachineHealthCheckStatus {
 interface UpgradeSnapshot {
   phase: string;
   targetVersion?: string;
+  targetChannel?: string;
   currentVersion?: string;
   cvoMessage?: string;
   startedAt?: string;
@@ -842,28 +843,49 @@ const MachineHealthChecksCard: React.FC<{ mhcs: MachineHealthCheckStatus[] }> = 
 
 // ---- Main component --------------------------------------------------------
 
-export const UpgradeStatusView: React.FC = () => {
+interface UpgradeStatusViewProps {
+  onRunCheckRequested?: (version: string, channel: string) => void;
+}
+
+export const UpgradeStatusView: React.FC<UpgradeStatusViewProps> = ({ onRunCheckRequested }) => {
   const [snapshot, setSnapshot]     = React.useState<UpgradeSnapshot | null>(null);
   const [loading, setLoading]       = React.useState(true);
   const [error, setError]           = React.useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
 
-  // Watch the latest UpgradeDiagsCheck CR to surface preflight issues here.
+  // Watch UpgradeDiagsCheck CRs to surface preflight results for the current upgrade target.
   const [diagsChecks] = useK8sWatchResource<UpgradeDiagsCheck[]>({
     groupVersionKind: { group: 'upgrade.managed.openshift.io', version: 'v1alpha1', kind: 'UpgradeDiagsCheck' },
     namespace: MUO_NS,
     isList: true,
   });
-  const latestDiagsCheck = React.useMemo(() => {
-    if (!Array.isArray(diagsChecks) || diagsChecks.length === 0) return null;
-    return [...diagsChecks].sort((a, b) =>
-      (b.metadata?.creationTimestamp ?? '').localeCompare(a.metadata?.creationTimestamp ?? '')
-    )[0];
-  }, [diagsChecks]);
-  const preflightIssues = latestDiagsCheck?.status?.checks?.filter(
+
+  // Find the most recent check that matches the current upgrade target version.
+  const matchingCheck = React.useMemo(() => {
+    if (!Array.isArray(diagsChecks) || !snapshot?.targetVersion) return null;
+    return [...diagsChecks]
+      .filter(c => c.spec?.desired?.version === snapshot.targetVersion)
+      .sort((a, b) => (b.metadata?.creationTimestamp ?? '').localeCompare(a.metadata?.creationTimestamp ?? ''))
+      [0] ?? null;
+  }, [diagsChecks, snapshot?.targetVersion]);
+
+  const preflightIssues = matchingCheck?.status?.checks?.filter(
     c => c.result === 'Failed' || c.result === 'Error' || c.result === 'Warning'
   ) ?? [];
+
+  // Check staleness: >24h since it completed (or started, if still running).
+  const checkAgeMs = React.useMemo(() => {
+    const ts = matchingCheck?.status?.completedAt ?? matchingCheck?.status?.startedAt;
+    return ts ? Date.now() - new Date(ts).getTime() : null;
+  }, [matchingCheck]);
+  const checkIsStale = checkAgeMs !== null && checkAgeMs > 24 * 60 * 60 * 1000;
+
+  const fmtAge = (ms: number) => {
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} min ago`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)} hr ago`;
+    return `${Math.floor(ms / 86_400_000)} day(s) ago`;
+  };
 
   const fetchStatus = React.useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -1027,36 +1049,90 @@ export const UpgradeStatusView: React.FC = () => {
             </Alert>
           )}
 
-          {/* ---- Preflight cross-link banner ---- */}
-          {preflightIssues.length > 0 && latestDiagsCheck && (
-            <div style={{
-              marginBottom: 20, padding: '10px 16px',
-              background: preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error') ? T.dangerBg : T.warningBg,
-              borderLeft: `4px solid ${preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error') ? T.danger : T.warning}`,
-              borderRadius: T.radiusSm,
-              display: 'flex', alignItems: 'flex-start', gap: 12,
-            }}>
-              <div style={{ flex: 1 }}>
+          {/* ---- Preflight diagnostics banner ---- */}
+          {snapshot.targetVersion && (() => {
+            const tv = snapshot.targetVersion;
+            const ch = snapshot.targetChannel ?? '';
+
+            // No matching check for this target version
+            if (!matchingCheck) {
+              return (
                 <div style={{
-                  fontWeight: 700, fontSize: 13,
-                  color: preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error') ? T.danger : T.warning,
-                  marginBottom: 4,
+                  marginBottom: 20, padding: '10px 16px',
+                  background: T.infoBg,
+                  borderLeft: `4px solid ${T.info}`,
+                  borderRadius: T.radiusSm,
+                  display: 'flex', alignItems: 'center', gap: 12,
                 }}>
-                  {preflightIssues.filter(c => c.result === 'Failed' || c.result === 'Error').length > 0
-                    ? `Preflight check failures may be contributing to upgrade issues`
-                    : `Preflight check warnings detected`}
+                  <div style={{ flex: 1, fontSize: 13, color: T.textSubtle }}>
+                    <strong style={{ color: T.info }}>No preflight check found for {tv}.</strong>
+                    {' Run a diagnostics check to identify potential roadblocks before or during this upgrade.'}
+                  </div>
+                  {onRunCheckRequested && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => onRunCheckRequested(tv, ch)}
+                      style={{ borderRadius: T.radiusMd, whiteSpace: 'nowrap' }}
+                    >
+                      Run Check for {tv}
+                    </Button>
+                  )}
                 </div>
-                <div style={{ fontSize: 12, color: T.textSubtle }}>
-                  {preflightIssues.map(c => c.name.replace(/([a-z])([A-Z])/g, '$1 $2')).join(', ')}
-                  {' — from check run for '}
-                  <strong>{latestDiagsCheck.spec?.desired?.version}</strong>
-                  {'. See the '}
-                  <strong>Diagnostics Checks</strong>
-                  {' tab for details and remediation steps.'}
+              );
+            }
+
+            // Matching check found — determine severity
+            const hasErrors = preflightIssues.some(c => c.result === 'Failed' || c.result === 'Error');
+            const hasIssues = preflightIssues.length > 0;
+            const bgColor   = hasErrors ? T.dangerBg  : hasIssues ? T.warningBg  : T.infoBg;
+            const bdColor   = hasErrors ? T.danger     : hasIssues ? T.warning    : T.success;
+            const hdColor   = hasErrors ? T.danger     : hasIssues ? T.warning    : T.success;
+            const heading   = hasErrors
+              ? 'Preflight check failures detected — may be contributing to upgrade issues'
+              : hasIssues
+              ? 'Preflight check warnings detected'
+              : `Preflight checks passed for ${tv}`;
+
+            return (
+              <div style={{
+                marginBottom: 20, padding: '10px 16px',
+                background: bgColor,
+                borderLeft: `4px solid ${bdColor}`,
+                borderRadius: T.radiusSm,
+                display: 'flex', alignItems: 'flex-start', gap: 12,
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: hdColor, marginBottom: 4 }}>
+                    {heading}
+                  </div>
+                  <div style={{ fontSize: 12, color: T.textSubtle }}>
+                    {hasIssues
+                      ? <>{preflightIssues.map(c => c.name.replace(/([a-z])([A-Z])/g, '$1 $2')).join(', ')}
+                          {' — '}
+                          {'See the '}
+                          <strong>Diagnostics Checks</strong>
+                          {' tab for details and remediation steps.'}</>
+                      : <>All checks passed. See the <strong>Diagnostics Checks</strong> tab for the full report.</>
+                    }
+                    {checkIsStale && checkAgeMs !== null && (
+                      <span style={{ marginLeft: 8, fontStyle: 'italic' }}>
+                        (Last run {fmtAge(checkAgeMs)} —{' '}
+                        {onRunCheckRequested
+                          ? <button
+                              onClick={() => onRunCheckRequested(tv, ch)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                                color: T.info, textDecoration: 'underline', font: 'inherit', fontSize: 12 }}
+                            >re-run now</button>
+                          : 'consider re-running'
+                        })
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ---- Cluster Operators (collapsed by default) ---- */}
           <OperatorsCard ops={snapshot.clusterOperators} />

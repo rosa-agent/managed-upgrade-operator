@@ -253,7 +253,14 @@ export const UpgradeDiagsPage: React.FC = () => {
       />
 
       <PageSection>
-        {activeTab === 'status' && <UpgradeStatusView />}
+        {activeTab === 'status' && (
+          <UpgradeStatusView
+            onRunCheckRequested={(version, channel) => {
+              openCreate({ version, channel, platform: 'OSD', description: '' });
+              setActiveTab('checks');
+            }}
+          />
+        )}
         {activeTab === 'checks' && (<>
         {deleteError && (
           <Alert variant="warning" isInline title="Delete failed" style={{ marginBottom: 16 }}>

@@ -108,7 +108,7 @@ export const CreateDiagsCheckForm: React.FC<Props> = ({ isOpen, onClose, onCreat
     if (initialValues) {
       setVersion(initialValues.version);
       setChannel(initialValues.channel);
-      setPlatform(initialValues.platform);
+      setPlatform(detectedPlatform ?? initialValues.platform);
       setDescription(initialValues.description);
       setUseCustomVersion(true);
       setUseCustomChannel(true);
