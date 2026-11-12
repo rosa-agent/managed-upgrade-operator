@@ -11,6 +11,7 @@ spec:
   - name: crds
   - name: namespace
   - name: rbac
+  - name: certs
   - name: deploy
   - name: cleanup-rbac
   - name: cleanup-deploy

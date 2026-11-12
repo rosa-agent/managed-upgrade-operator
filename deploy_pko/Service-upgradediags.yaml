@@ -5,7 +5,7 @@ metadata:
   name: upgradediags
   namespace: openshift-managed-upgrade-operator
   annotations:
-    package-operator.run/phase: deploy
+    package-operator.run/phase: certs
     package-operator.run/collision-protection: IfNoController
     service.beta.openshift.io/serving-cert-secret-name: upgradediags-tls
   labels:

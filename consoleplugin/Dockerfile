@@ -21,3 +21,5 @@ EXPOSE 9443
 
 LABEL io.openshift.managed.name="upgradediags" \
       io.openshift.managed.description="Console plugin for MUO upgrade diagnostics"
+
+CMD ["nginx", "-g", "daemon off;"]
