@@ -323,6 +323,55 @@ CVO upgrade history from `ClusterVersion.status.history`.
 
 ---
 
+## Future: Separate Diagnostics Package (opt-in)
+
+### Intent
+
+The diagnostics subsystem is designed to eventually ship as a separate,
+opt-in PKO package (`managed-upgrade-operator-diagnostics`) that customers
+or SREs install alongside core MUO. Installing the package would bring:
+
+- `Deployment-upgradediags` — the HTTP server container
+- `CustomResourceDefinition-upgradediagschecks` — the UpgradeDiagsCheck CRD
+- `ClusterRole/Binding-managed-upgrade-operator-diagnostics` — diagnostic RBAC only
+- `ConsolePlugin` CR — the Upgrade Diagnostics tab
+- `Role/RoleBinding-upgradediags-reader` — cluster-admin tab access
+- `Service/Route-*-upgradediags` — network exposure
+
+Without this package installed, the `ReconcileUpgradeDiagsCheck` controller
+registered in the main MUO binary sits idle — it watches for `UpgradeDiagsCheck`
+CRs that will never be created because the HTTP service and ConsolePlugin are
+not present. No CRs are created, no checks run, no RBAC is used. The main
+upgrade path is completely unaffected.
+
+### What enables this cleanly today
+
+- Diagnostic RBAC is already in a **separate ClusterRole**
+  (`managed-upgrade-operator-diagnostics`) — not merged into the upgrade ClusterRole
+- The `upgradediags` container is already a **separate Deployment**
+- The `ConsolePlugin` CR, reader Role/Binding, and CRD are all **standalone manifests**
+
+### Follow-up work required before packaging
+
+**Binary split (most significant):** The `ReconcileUpgradeDiagsCheck` reconciler
+currently runs inside the main MUO binary using the main manager's client, scheme,
+and leader election. For full decoupling it needs to move into the `upgradediags`
+binary with its own `ctrl.NewManager` setup. Until then the reconciler is an idle
+goroutine in the main binary — harmless, but it means the main operator binary has
+a compile-time dependency on the diagnostics package.
+
+Steps for the follow-up PR:
+1. Add `ctrl.NewManager` + scheme registration to the `upgradediags` entrypoint
+2. Register `ReconcileUpgradeDiagsCheck` there instead of `main.go`
+3. Remove the registration from `main.go`
+4. Decide ServiceAccount: share the existing MUO SA or create a dedicated
+   `managed-upgrade-operator-upgradediags` SA with only the diagnostic RBAC
+
+**Do NOT** merge diagnostic RBAC back into the main ClusterRole while this split
+is pending — the separation established in this branch is the correct boundary.
+
+---
+
 ## Planned Next Phases
 
 ### Phase B — Console: Text/Table upgrade status view
