@@ -134,6 +134,15 @@ func (r *ReconcileUpgradeDiagsCheck) Reconcile(ctx context.Context, req reconcil
 	if instance.Status.StartedAt == nil {
 		now := metav1.NewTime(time.Now())
 		instance.Status.StartedAt = &now
+		// Write StartedAt first so the reconcile can always make forward progress,
+		// even if the CRD schema predates the cluster-identifier fields.
+		if err := r.Client.Status().Update(ctx, instance); err != nil {
+			return reconcile.Result{}, err
+		}
+		// Best-effort: populate cluster identifier. If the CRD schema does not yet
+		// include clusterInfraName/apiServerURL the status write will be rejected
+		// with "unknown field"; in that case clear the fields and continue — checks
+		// will still run and the HTTP handler will fetch the identifier directly.
 		infra := &unstructured.Unstructured{}
 		infra.SetGroupVersionKind(schema.GroupVersionKind{
 			Group: "config.openshift.io", Version: "v1", Kind: "Infrastructure",
@@ -143,9 +152,11 @@ func (r *ReconcileUpgradeDiagsCheck) Reconcile(ctx context.Context, req reconcil
 		} else {
 			instance.Status.ClusterInfraName, _, _ = unstructured.NestedString(infra.Object, "status", "infrastructureName")
 			instance.Status.APIServerURL, _, _ = unstructured.NestedString(infra.Object, "status", "apiServerURL")
-		}
-		if err := r.Client.Status().Update(ctx, instance); err != nil {
-			return reconcile.Result{}, err
+			if err := r.Client.Status().Update(ctx, instance); err != nil {
+				logger.Info("Cluster identifier fields not yet in CRD schema — omitting from status until CRD is updated", "err", err)
+				instance.Status.ClusterInfraName = ""
+				instance.Status.APIServerURL = ""
+			}
 		}
 	}
 

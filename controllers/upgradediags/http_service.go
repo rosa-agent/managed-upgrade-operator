@@ -16,6 +16,9 @@ import (
 	authnv1 "k8s.io/api/authentication/v1"
 	authzv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -275,7 +278,9 @@ func (s *UpgradeDiagsHTTPServer) handleGet(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
-	writeJSON(w, http.StatusOK, buildResponse(requestID, cr))
+	resp := buildResponse(requestID, cr)
+	s.fillClusterIdentifier(ctx, &resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *UpgradeDiagsHTTPServer) handleList(w http.ResponseWriter, r *http.Request, token string) {
@@ -294,16 +299,58 @@ func (s *UpgradeDiagsHTTPServer) handleList(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Fetch cluster identifier once and apply to all responses.
+	infraName, apiServerURL := s.fetchClusterIdentifier(ctx)
+
 	responses := make([]CheckResponse, 0, len(list.Items))
 	for i := range list.Items {
 		cr := &list.Items[i]
 		rid := cr.Labels[requestIDLabel]
-		responses = append(responses, buildResponse(rid, cr))
+		resp := buildResponse(rid, cr)
+		if resp.ClusterInfraName == "" {
+			resp.ClusterInfraName = infraName
+		}
+		if resp.APIServerURL == "" {
+			resp.APIServerURL = apiServerURL
+		}
+		responses = append(responses, resp)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"requests": responses,
 		"total":    len(responses),
 	})
+}
+
+// fetchClusterIdentifier reads the cluster infrastructure name and API server URL
+// directly from the Infrastructure CR. Called when the CR status fields are empty
+// (e.g. when the CRD schema predates the cluster-identifier fields).
+func (s *UpgradeDiagsHTTPServer) fetchClusterIdentifier(ctx context.Context) (infraName, apiServerURL string) {
+	infra := &unstructured.Unstructured{}
+	infra.SetGroupVersionKind(schema.GroupVersionKind{
+		Group: "config.openshift.io", Version: "v1", Kind: "Infrastructure",
+	})
+	if err := s.Client.Get(ctx, types.NamespacedName{Name: "cluster"}, infra); err != nil {
+		s.Logger.Error(err, "HTTP: failed to read Infrastructure CR for cluster identifier")
+		return "", ""
+	}
+	infraName, _, _ = unstructured.NestedString(infra.Object, "status", "infrastructureName")
+	apiServerURL, _, _ = unstructured.NestedString(infra.Object, "status", "apiServerURL")
+	return infraName, apiServerURL
+}
+
+// fillClusterIdentifier populates ClusterInfraName and APIServerURL on resp when
+// they are absent from the CR status (CRD schema not yet updated).
+func (s *UpgradeDiagsHTTPServer) fillClusterIdentifier(ctx context.Context, resp *CheckResponse) {
+	if resp.ClusterInfraName != "" && resp.APIServerURL != "" {
+		return
+	}
+	infraName, apiServerURL := s.fetchClusterIdentifier(ctx)
+	if resp.ClusterInfraName == "" {
+		resp.ClusterInfraName = infraName
+	}
+	if resp.APIServerURL == "" {
+		resp.APIServerURL = apiServerURL
+	}
 }
 
 func (s *UpgradeDiagsHTTPServer) handleDelete(w http.ResponseWriter, r *http.Request, token, requestID string) {
