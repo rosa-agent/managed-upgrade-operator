@@ -139,6 +139,14 @@ const (
 
 // UpgradeDiagsCheckStatus reports the outcome of all diagnostics checks.
 type UpgradeDiagsCheckStatus struct {
+	// ClusterInfraName is the cluster's infrastructure name (Infrastructure.status.infrastructureName).
+	// Populated at run time so results are unambiguously tied to the cluster that produced them.
+	// +kubebuilder:validation:Optional
+	ClusterInfraName string `json:"clusterInfraName,omitempty"`
+	// APIServerURL is the cluster's API server URL (Infrastructure.status.apiServerURL).
+	// +kubebuilder:validation:Optional
+	APIServerURL string `json:"apiServerURL,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	StartedAt *metav1.Time `json:"startedAt,omitempty"`
 	// +kubebuilder:validation:Optional

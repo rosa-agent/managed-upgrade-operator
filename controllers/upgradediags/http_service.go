@@ -51,13 +51,15 @@ type CheckRequest struct {
 
 // CheckResponse is the body returned by GET /api/v1/upgrade-diags/{id}.
 type CheckResponse struct {
-	RequestID       string        `json:"requestId"`
-	Status          string        `json:"status"`
-	StartedAt       *metav1.Time  `json:"startedAt,omitempty"`
-	CompletedAt     *metav1.Time  `json:"completedAt,omitempty"`
-	TargetVersion   string        `json:"targetVersion"`
-	TargetChannel   string        `json:"targetChannel"`
-	Platform        string        `json:"platform"`
+	RequestID        string        `json:"requestId"`
+	Status           string        `json:"status"`
+	ClusterInfraName string        `json:"clusterInfraName,omitempty"`
+	APIServerURL     string        `json:"apiServerURL,omitempty"`
+	StartedAt        *metav1.Time  `json:"startedAt,omitempty"`
+	CompletedAt      *metav1.Time  `json:"completedAt,omitempty"`
+	TargetVersion    string        `json:"targetVersion"`
+	TargetChannel    string        `json:"targetChannel"`
+	Platform         string        `json:"platform"`
 	ChecksTotal     int           `json:"checksTotal"`
 	ChecksCompleted int           `json:"checksCompleted"`
 	ChecksPassed    int           `json:"checksPassed"`
@@ -504,14 +506,16 @@ func buildResponse(requestID string, cr *upgradev1alpha1.UpgradeDiagsCheck) Chec
 	}
 
 	resp := CheckResponse{
-		RequestID:     requestID,
-		Status:        status,
-		StartedAt:     cr.Status.StartedAt,
-		CompletedAt:   cr.Status.CompletedAt,
-		TargetVersion: cr.Spec.Desired.Version,
-		TargetChannel: cr.Spec.Desired.Channel,
-		Platform:      string(cr.Spec.Type),
-		ChecksTotal:   len(cr.Status.Checks),
+		RequestID:        requestID,
+		Status:           status,
+		ClusterInfraName: cr.Status.ClusterInfraName,
+		APIServerURL:     cr.Status.APIServerURL,
+		StartedAt:        cr.Status.StartedAt,
+		CompletedAt:      cr.Status.CompletedAt,
+		TargetVersion:    cr.Spec.Desired.Version,
+		TargetChannel:    cr.Spec.Desired.Channel,
+		Platform:         string(cr.Spec.Type),
+		ChecksTotal:      len(cr.Status.Checks),
 	}
 
 	anyBad := false

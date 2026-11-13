@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	configv1 "github.com/openshift/api/config/v1"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
 	cv "github.com/openshift/managed-upgrade-operator/pkg/clusterversion"
 	"github.com/openshift/managed-upgrade-operator/pkg/dvo"
@@ -14,6 +15,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -131,6 +133,13 @@ func (r *ReconcileUpgradeDiagsCheck) Reconcile(ctx context.Context, req reconcil
 	if instance.Status.StartedAt == nil {
 		now := metav1.NewTime(time.Now())
 		instance.Status.StartedAt = &now
+		infra := &configv1.Infrastructure{}
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: "cluster"}, infra); err != nil {
+			logger.Error(err, "Failed to read Infrastructure CR — cluster identifier will be omitted from status")
+		} else {
+			instance.Status.ClusterInfraName = infra.Status.InfrastructureName
+			instance.Status.APIServerURL = infra.Status.APIServerURL
+		}
 		if err := r.Client.Status().Update(ctx, instance); err != nil {
 			return reconcile.Result{}, err
 		}
