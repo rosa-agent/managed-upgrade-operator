@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-logr/logr"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,6 +44,15 @@ func (c *installedOperatorMaxVersionCheck) Run(ctx context.Context, deps CheckDe
 	csvList := &unstructured.UnstructuredList{}
 	csvList.SetGroupVersionKind(csvListGVK)
 	if err := deps.Client.List(ctx, csvList, &client.ListOptions{}); err != nil {
+		if apierrors.IsForbidden(err) {
+			return CheckOutput{
+				Result:   upgradev1alpha1.CheckResultWarning,
+				Summary:  "RBAC not granted — cannot list ClusterServiceVersions",
+				Findings: []string{fmt.Sprintf("forbidden: %v", err)},
+				Owner:    upgradev1alpha1.OwnerServiceTeam,
+				Action:   "Add 'clusterserviceversions' get+list permission for 'operators.coreos.com' to the managed-upgrade-operator ClusterRole.",
+			}
+		}
 		return CheckOutput{
 			Result: upgradev1alpha1.CheckResultError,
 			Error:  fmt.Sprintf("unable to list ClusterServiceVersions: %v", err),

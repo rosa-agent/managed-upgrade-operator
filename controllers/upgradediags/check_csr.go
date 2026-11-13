@@ -8,6 +8,7 @@ import (
 	"github.com/go-logr/logr"
 	upgradev1alpha1 "github.com/openshift/managed-upgrade-operator/api/v1alpha1"
 	certificatesv1 "k8s.io/api/certificates/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -25,6 +26,15 @@ func (c *pendingCSRsCheck) DefaultOwner() upgradev1alpha1.CheckOwner {
 func (c *pendingCSRsCheck) Run(ctx context.Context, deps CheckDependencies, logger logr.Logger, timeout time.Duration) CheckOutput {
 	csrList := &certificatesv1.CertificateSigningRequestList{}
 	if err := deps.Client.List(ctx, csrList, &client.ListOptions{}); err != nil {
+		if apierrors.IsForbidden(err) {
+			return CheckOutput{
+				Result:   upgradev1alpha1.CheckResultWarning,
+				Summary:  "RBAC not granted — cannot list CertificateSigningRequests",
+				Findings: []string{fmt.Sprintf("forbidden: %v", err)},
+				Owner:    upgradev1alpha1.OwnerServiceTeam,
+				Action:   "Add 'certificatesigningrequests' get+list permission for 'certificates.k8s.io' to the managed-upgrade-operator ClusterRole.",
+			}
+		}
 		return CheckOutput{
 			Result: upgradev1alpha1.CheckResultError,
 			Error:  fmt.Sprintf("unable to list CertificateSigningRequests: %v", err),

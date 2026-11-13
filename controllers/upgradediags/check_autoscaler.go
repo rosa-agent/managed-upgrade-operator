@@ -100,6 +100,15 @@ func (c *clusterAutoscalerConfigCheck) Run(ctx context.Context, deps CheckDepend
 }
 
 func autoscalerGetError(err error) CheckOutput {
+	if apierrors.IsForbidden(err) {
+		return CheckOutput{
+			Result:   upgradev1alpha1.CheckResultWarning,
+			Summary:  "RBAC not granted — cannot query ClusterAutoscaler",
+			Findings: []string{fmt.Sprintf("forbidden: %v", err)},
+			Owner:    upgradev1alpha1.OwnerServiceTeam,
+			Action:   "Add 'clusterautoscalers' get permission for 'autoscaling.openshift.io' to the managed-upgrade-operator ClusterRole.",
+		}
+	}
 	return CheckOutput{
 		Result: upgradev1alpha1.CheckResultError,
 		Error:  fmt.Sprintf("unable to get ClusterAutoscaler: %v", err),
