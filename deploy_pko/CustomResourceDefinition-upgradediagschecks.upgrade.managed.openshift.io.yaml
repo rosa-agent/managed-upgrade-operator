@@ -118,6 +118,12 @@ spec:
             status:
               description: UpgradeDiagsCheckStatus reports the outcome of all checks.
               properties:
+                clusterInfraName:
+                  description: ClusterInfraName is the cluster's infrastructure name (Infrastructure.status.infrastructureName).
+                  type: string
+                apiServerURL:
+                  description: APIServerURL is the cluster's API server URL (Infrastructure.status.apiServerURL).
+                  type: string
                 startedAt:
                   description: StartedAt is when the first check began running.
                   format: date-time
