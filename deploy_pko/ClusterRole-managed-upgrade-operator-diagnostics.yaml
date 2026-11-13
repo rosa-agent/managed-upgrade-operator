@@ -1,0 +1,38 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: managed-upgrade-operator-diagnostics
+  annotations:
+    package-operator.run/phase: rbac
+    package-operator.run/collision-protection: IfNoController
+# Read-only permissions required exclusively by the upgradediags diagnostic
+# checks. Kept separate from the managed-upgrade-operator ClusterRole so it
+# is easy to audit what the diagnostics subsystem adds beyond the core
+# upgrade-orchestration permissions.
+rules:
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - clusterserviceversions
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - autoscaling.openshift.io
+  resources:
+  - clusterautoscalers
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
