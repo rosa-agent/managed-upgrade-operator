@@ -171,12 +171,6 @@ func (s *UpgradeDiagsHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 		requestID = parts[4]
 	}
 
-	// Catalog endpoint: returns registered check names/descriptions. No auth required.
-	if r.Method == http.MethodGet && requestID == "checks" {
-		s.handleCatalog(w)
-		return
-	}
-
 	token := extractBearerToken(r)
 	if token == "" {
 		http.Error(w, "Authorization: Bearer <token> required", http.StatusUnauthorized)
@@ -186,6 +180,8 @@ func (s *UpgradeDiagsHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost && requestID == "":
 		s.handleCreate(w, r, token)
+	case r.Method == http.MethodGet && requestID == "checks":
+		s.handleCatalog(w, r, token)
 	case r.Method == http.MethodGet && requestID != "":
 		s.handleGet(w, r, token, requestID)
 	case r.Method == http.MethodGet && requestID == "":
@@ -198,8 +194,12 @@ func (s *UpgradeDiagsHTTPServer) route(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCatalog returns the list of registered checks with their names, descriptions,
-// default owners, and timeouts. No authentication required — this is schema metadata.
-func (s *UpgradeDiagsHTTPServer) handleCatalog(w http.ResponseWriter) {
+// default owners, and timeouts.
+func (s *UpgradeDiagsHTTPServer) handleCatalog(w http.ResponseWriter, r *http.Request, token string) {
+	if err := s.authorizeToken(r.Context(), token, "list"); err != nil {
+		http.Error(w, "Forbidden: "+err.Error(), http.StatusForbidden)
+		return
+	}
 	entries := make([]CatalogEntry, 0, len(registeredChecks))
 	for _, c := range registeredChecks {
 		entry := CatalogEntry{
