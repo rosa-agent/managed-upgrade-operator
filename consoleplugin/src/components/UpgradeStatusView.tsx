@@ -5,7 +5,6 @@ import { consoleFetch, useK8sWatchResource } from '@openshift-console/dynamic-pl
 import { type UpgradeDiagsCheck } from '../types';
 
 const STATUS_API = '/api/proxy/plugin/managed-upgrade-operator/muo-api/api/v1/upgrade-status';
-const POLL_INTERVAL_MS = 30_000;
 const MUO_NS = 'openshift-managed-upgrade-operator';
 
 // PF semantic design tokens — single source of truth for all colors in this file.
@@ -908,8 +907,6 @@ export const UpgradeStatusView: React.FC<UpgradeStatusViewProps> = ({ onRunCheck
 
   React.useEffect(() => {
     fetchStatus();
-    const id = setInterval(() => fetchStatus(), POLL_INTERVAL_MS);
-    return () => clearInterval(id);
   }, [fetchStatus]);
 
   const cardStyle: React.CSSProperties = {
@@ -944,7 +941,7 @@ export const UpgradeStatusView: React.FC<UpgradeStatusViewProps> = ({ onRunCheck
         </Button>
         {lastRefresh && (
           <span style={{ fontSize: 12, color: T.textSubtle }}>
-            Last updated {lastRefresh.toLocaleTimeString()} · auto-refreshes every 30s
+            Last refreshed {lastRefresh.toLocaleTimeString()}
           </span>
         )}
       </div>
