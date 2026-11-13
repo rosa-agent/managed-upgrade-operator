@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { List, ListItem } from '@patternfly/react-core';
+import { InfoCircleIcon } from '@patternfly/react-icons';
 import { type UpgradeDiagsCheck, type DiagsCheckResult, type CheckResult } from '../types';
 import { StatusBadge } from './StatusBadge';
 
@@ -115,6 +116,16 @@ const CheckRowDetail: React.FC<{ c: DiagsCheckResult }> = ({ c }) => {
 
   return (
     <div style={{ padding: '10px 0 10px 16px' }}>
+      {/* Full description */}
+      {c.description && (
+        <div style={{
+          marginBottom: 12, fontSize: 13, color: T.textSubtle,
+          lineHeight: 1.6, fontStyle: 'italic',
+        }}>
+          {c.description}
+        </div>
+      )}
+
       {/* Owner badge */}
       {ownerLabel && (c.result === 'Failed' || c.result === 'Error' || c.result === 'Warning') && (
         <div style={{ marginBottom: 10 }}>
@@ -303,8 +314,23 @@ export const UpgradeDiagsDetail: React.FC<Props> = ({ pfc }) => {
                       <td style={tdBase}>
                         <div style={{ fontWeight: 600 }}>{humanize(c.name)}</div>
                         {c.description && (
-                          <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>
-                            {truncate(c.description)}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginTop: 2 }}>
+                            <span style={{ fontSize: 12, color: T.textMuted }}>
+                              {truncate(c.description)}
+                            </span>
+                            {c.description.length > 100 && (
+                              <button
+                                title={c.description}
+                                aria-label="Full description"
+                                style={{
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  padding: 0, color: T.info, fontSize: 11,
+                                  lineHeight: 1, flexShrink: 0, marginTop: 1,
+                                }}
+                              >
+                                <InfoCircleIcon />
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
